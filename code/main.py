@@ -3,9 +3,15 @@
 #main.py
 #main file for the project, will be checking game state and running all functions on the screen
 
+import os
+
 import pygame
 import sys
 import random
+
+#makes sure teh directrory alwaays works no matter where the file is run from
+from pathlib import Path
+os.chdir(Path(__file__).resolve().parent)
 
 from settings import *
 from town import Town
@@ -16,22 +22,30 @@ from test_level import TestLevel
 
 class Game:
     def __init__(self):
-        # pygame initialization
+        #pygame initialization
         pygame.init()
         pygame.joystick.init()
         pygame.mixer.init()
 
-        # Town music
+        #Menu music
+        self.menu_music = pygame.mixer.Sound("../audio/menu/3-13 The Isle of Songs.mp3")
+        self.menu_music.set_volume(0.7)
+        self.menu_music.play(loops=-1)
+
+        #Town music
         self.town_music = pygame.mixer.Sound("../audio/town/3-17. Snowbelle City.mp3")
         self.town_music.set_volume(0.4)
-        self.town_music.play(loops=-1)
+     
+        #Level 1 music
+        self.level_one_music = pygame.mixer.Sound("../audio/levels/level 1/2-17. tartarus_0d06.mp3")
+        self.level_one_music.set_volume(0.45)
 
-        # Screen setup
+        #Screen setup
         self.screen = pygame.display.set_mode((screen_width, screen_height))
         pygame.display.set_caption("Eira and The Crystal Promise")
         self.clock = pygame.time.Clock()
 
-        # Controller setup
+        #Controller setup
         self.joysticks = [pygame.joystick.Joystick(i) for i in range(pygame.joystick.get_count())]
         for joystick in self.joysticks:
             joystick.init()
@@ -167,10 +181,12 @@ class Game:
         self.choice_active = False
         self.choice_level = None
         self.town_music.stop()
+        self.level_one_music.play(loops=-1)
 
     def return_to_town(self):
         self.status = "town"
         self.test_level = None
+        self.level_one_music.stop()
         self.town_music.play(loops=-1)
 
     def confirm_choice(self):
@@ -209,8 +225,7 @@ class Game:
 
                 if event.type == pygame.KEYDOWN:
                     if self.status == "test":
-                        if event.key == pygame.K_ESCAPE:
-                            self.return_to_town()
+                        pass
 
                     elif self.status == "town":
                         if self.choice_active:
@@ -415,6 +430,8 @@ def main_menu(screen):
     buttons = [play_button, how_button, settings_button, quit_button]
     button_texts = ["Play", "How to Play", "Settings", "Quit"]
     selected_index = 0
+    last_stick_move = 0
+    stick_delay = 180
 
     def move_selection(direction):
         nonlocal selected_index
@@ -475,6 +492,22 @@ def main_menu(screen):
             text_rect = text_surface.get_rect(center=button.center)
             screen.blit(text_surface, text_rect)
 
+        # Left stick menu movement
+        if pygame.joystick.get_count() > 0:
+            joystick = pygame.joystick.Joystick(0)
+            current_time = pygame.time.get_ticks()
+
+            if joystick.get_numaxes() >= 2:
+                stick_y = joystick.get_axis(1)
+
+                if current_time - last_stick_move > stick_delay:
+                    if stick_y < -0.55:
+                        move_selection(-1)
+                        last_stick_move = current_time
+                    elif stick_y > 0.55:
+                        move_selection(1)
+                        last_stick_move = current_time
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -513,16 +546,15 @@ def main_menu(screen):
                     result = select_option(selected_index)
                     if result == "play":
                         return
-
                 elif event.button == DPAD_UP:
                     move_selection(-1)
-
                 elif event.button == DPAD_DOWN:
                     move_selection(1)
 
         pygame.display.update()
 
-
 game = Game()
 main_menu(game.screen)
+game.menu_music.stop()
+game.town_music.play(loops=-1)
 game.run()

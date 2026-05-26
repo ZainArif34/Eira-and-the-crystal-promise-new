@@ -38,55 +38,37 @@ class Town:
         )
 
     def create_npc_layer(self, path):
-
         layout = import_csv_layout(path)
-
         for row_index, row in enumerate(layout):
-
             for col_index, val in enumerate(row):
-
                 if val != '-1':
-                    print("NPC VALUE:", val)
-
                     x = col_index * tile_size
                     y = row_index * tile_size
-
-                    # DEFAULT
                     dialogue = [
                         "Hello traveler."
                     ]
-
                     level_to_load = None
-
                     if val == "5":
-
                         dialogue = [
                             "Welcome to Frostpoint.",
                             "The winter has lasted years.",
                             "People fear the crystal...",
                             "Would you like to enter the test level?"
                         ]
-
                         level_to_load = "test"
-
                     elif val == "6":
-
                         dialogue = [
                             "The crystal chose Eira...",
                             "At least that's what they say.",
                             "I hope they're right."
                         ]
-
                         level_to_load = None
-
                     elif val == '7':
-
                         dialogue = [
                             "I heard the crystal is in the mountains.",
                             "But no one has been there in ages.",
                             "It's too dangerous."
                         ]
-
                     npc = NPC(
                         (x, y),
                         [self.camera_group, self.npcs],
@@ -94,29 +76,19 @@ class Town:
                         dialogue,
                         level_to_load
                     )
-
                     # NPC collision
                     self.obstacles.add(npc)
 
     def create_layer(self, path):
-
         layout = import_csv_layout(path)
-
         for row_index, row in enumerate(layout):
-
             for col_index, val in enumerate(row):
-
                 if val != '-1':
-
                     x = col_index * tile_size
                     y = row_index * tile_size
-
                     tile_surf = self.graphics[int(val)]
-
                     sprite = pygame.sprite.Sprite()
-
                     sprite.image = tile_surf
-
                     sprite.rect = sprite.image.get_rect(
                         topleft=(x, y)
                     )
@@ -125,20 +97,13 @@ class Town:
                     self.camera_group.add(sprite)
 
     def create_collision_layer(self, path):
-
         layout = import_csv_layout(path)
-
         for row_index, row in enumerate(layout):
-
             for col_index, val in enumerate(row):
-
                 if val != '-1':
-
                     x = col_index * tile_size
                     y = row_index * tile_size
-
                     sprite = pygame.sprite.Sprite()
-
                     sprite.image = pygame.Surface(
                         (tile_size, tile_size)
                     )
@@ -154,8 +119,4 @@ class Town:
                     )
 
                     sprite.rect = full_rect.inflate(0, -10)
-
                     self.obstacles.add(sprite)
-
-                    # Uncomment to show collisions
-                    # self.camera_group.add(sprite)
