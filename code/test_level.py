@@ -28,6 +28,9 @@ class TestLevel:
         self.camera_offset = pygame.math.Vector2(0, 0)
         self.collectables_collected = 0
         self.total_collectables = 0
+        self.collectable_image = pygame.image.load("../graphics/terrainLevel/key_A_gold.png").convert_alpha()
+        self.collectable_image = pygame.transform.scale(self.collectable_image, (42, 42))
+        self.goal_locked_timer = 0
 
         self.checkpoints_activated = 0
         self.total_checkpoints = 0
@@ -199,16 +202,20 @@ class TestLevel:
                 val = val.strip()
 
                 if val != "-1" and val != "":
-                    tile_index = int(val)
+                    x = col_index * self.draw_tile_size
+                    y = row_index * self.draw_tile_size + self.y_offset
 
-                    if 0 <= tile_index < len(self.tiles):
-                        x = col_index * self.draw_tile_size
-                        y = row_index * self.draw_tile_size + self.y_offset
-                        sprite = pygame.sprite.Sprite()
-                        sprite.image = self.tiles[tile_index]
-                        sprite.rect = sprite.image.get_rect(topleft=(x, y))
-                        self.collectable_sprites.add(sprite)
-                        self.total_collectables += 1
+                    sprite = pygame.sprite.Sprite()
+                    sprite.image = self.collectable_image
+                    sprite.rect = sprite.image.get_rect(
+                        center=(
+                            x + self.draw_tile_size // 2,
+                            y + self.draw_tile_size // 2
+                        )
+                    )
+
+                    self.collectable_sprites.add(sprite)
+                    self.total_collectables += 1
 
     def create_checkpoint_layer(self, path):
         layout = import_csv_layout(path)
@@ -265,7 +272,10 @@ class TestLevel:
     def check_goal(self):
         for goal in self.goal_sprites:
             if goal.rect.colliderect(self.player.hitbox):
-                self.return_to_town()
+                if self.collectables_collected >= self.total_collectables:
+                    self.return_to_town()
+                else:
+                    self.goal_locked_timer = 120
 
     def check_collectables(self):
         for collectable in self.collectable_sprites:
@@ -309,7 +319,7 @@ class TestLevel:
         self.draw_wind()
 
         font = pygame.font.Font(None, 36)
-        text = font.render("Crystals: " + str(self.collectables_collected) + "/" + str(self.total_collectables), True, (255, 255, 255))
+        text = font.render("Keys: " + str(self.collectables_collected) + "/" + str(self.total_collectables), True, (255, 255, 255))
         self.display_surface.blit(text, (30, 30))
 
         checkpoint_text = font.render(
@@ -318,6 +328,10 @@ class TestLevel:
             (255, 255, 255)
         )
         self.display_surface.blit(checkpoint_text, (30, 70))
+        if self.goal_locked_timer > 0:
+            locked_text = font.render("You need all 10 keys first!", True, (255, 230, 120))
+            self.display_surface.blit(locked_text, (30, 110))
+            self.goal_locked_timer -= 1
 
     def reset_player_if_fallen(self):
         if self.player.hitbox.top > self.world_height + 300:

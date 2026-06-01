@@ -18,6 +18,7 @@ from town import Town
 from player import Player
 from camera import CameraGroup
 from test_level import TestLevel
+from house import House
 
 
 class Game:
@@ -35,7 +36,11 @@ class Game:
         #Town music
         self.town_music = pygame.mixer.Sound("../audio/town/3-17. Snowbelle City.mp3")
         self.town_music.set_volume(0.4)
-     
+
+        #House music
+        self.house_music = pygame.mixer.Sound("../audio/town/1-05. Littleroot Town.mp3")
+        self.house_music.set_volume(0.4)
+
         #Level 1 music
         self.level_one_music = pygame.mixer.Sound("../audio/levels/level 1/2-17. tartarus_0d06.mp3")
         self.level_one_music.set_volume(0.45)
@@ -58,7 +63,7 @@ class Game:
 
         # Create the town and player
         self.town = Town(self.screen, self.camera_group)
-        self.player = Player((640, 360), self.town.obstacles)
+        self.player = Player(self.town.player_start, self.town.obstacles)
         self.camera_group.add(self.player)
 
         # Dialogue system
@@ -70,6 +75,7 @@ class Game:
         # Game state
         self.status = "town"
         self.test_level = None
+        self.house = None
 
         # Yes / No choice
         self.choice_active = False
@@ -114,6 +120,29 @@ class Game:
                     particle["size"]
                 )
 
+    def check_door_interaction(self):
+        interact_rect = self.player.hitbox.inflate(40, 40)
+
+        for door in self.town.doors:
+            if interact_rect.colliderect(door.rect):
+                self.start_house(door.house_name)
+                return True
+
+        return False
+
+    def start_house(self, house_name):
+        if house_name == "house1":
+            self.house = House(self.screen, "../mapData/Interiors/House1/House1.tmx")
+            self.status = "house"
+            self.town_music.stop()
+            self.house_music.play(loops=-1)
+
+    def return_to_town_from_house(self):
+        self.status = "town"
+        self.house = None
+        self.house_music.stop()
+        self.town_music.play(loops=-1)
+
     def check_npc_interaction(self):
         interact_rect = self.player.hitbox.inflate(40, 40)
 
@@ -125,6 +154,23 @@ class Game:
                 self.dialogue_text = self.current_dialogue[0]
                 self.dialogue_active = True
                 break
+
+    def check_house_npc_interaction(self):
+        if self.house is None:
+            return False
+
+        interact_rect = self.house.player.hitbox.inflate(40, 40)
+
+        for npc in self.house.npcs:
+            if interact_rect.colliderect(npc.rect):
+                self.current_dialogue = npc.interact()
+                self.choice_level = getattr(npc, "level_to_load", None)
+                self.dialogue_index = 0
+                self.dialogue_text = self.current_dialogue[0]
+                self.dialogue_active = True
+                return True
+
+        return False
 
     def next_dialogue(self):
         self.dialogue_index += 1
@@ -181,12 +227,14 @@ class Game:
         self.choice_active = False
         self.choice_level = None
         self.town_music.stop()
+        self.house_music.stop()
         self.level_one_music.play(loops=-1)
-
+        
     def return_to_town(self):
         self.status = "town"
         self.test_level = None
         self.level_one_music.stop()
+        self.house_music.stop()
         self.town_music.play(loops=-1)
 
     def confirm_choice(self):
@@ -208,7 +256,15 @@ class Game:
         elif self.dialogue_active:
             self.next_dialogue()
         else:
-            self.check_npc_interaction()
+            if self.status == "house":
+                if self.house is not None:
+                    if self.house.check_exit_interaction():
+                        self.return_to_town_from_house()
+                    else:
+                        self.check_house_npc_interaction()
+            else:
+                if not self.check_door_interaction():
+                    self.check_npc_interaction()
 
     def press_cancel(self):
         if self.choice_active:
@@ -224,7 +280,28 @@ class Game:
                     sys.exit()
 
                 if event.type == pygame.KEYDOWN:
-                    if self.status == "test":
+                    if self.status == "house":
+                        if self.choice_active:
+                            if event.key in [pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT]:
+                                self.choice_index = 1 - self.choice_index
+                            elif event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
+                                self.confirm_choice()
+                            elif event.key == pygame.K_ESCAPE:
+                                self.cancel_choice()
+
+                        elif self.dialogue_active:
+                            if event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
+                                self.next_dialogue()
+
+                        else:
+                            if event.key == pygame.K_e:
+                                if self.house is not None:
+                                    if self.house.check_exit_interaction():
+                                        self.return_to_town_from_house()
+                                    else:
+                                        self.check_house_npc_interaction()
+
+                    elif self.status == "test":
                         pass
 
                     elif self.status == "town":
@@ -242,17 +319,24 @@ class Game:
 
                         else:
                             if event.key == pygame.K_e:
-                                self.check_npc_interaction()
+                                if not self.check_door_interaction():
+                                    self.check_npc_interaction()
 
                 if event.type == pygame.JOYBUTTONDOWN:
-                    if self.status == "town":
+                    if self.status == "house":
+                        if event.button == self.A_BUTTON:
+                            self.press_confirm()
+                        elif event.button == self.B_BUTTON:
+                            self.press_cancel()
+
+                    elif self.status == "town":
                         if event.button == self.A_BUTTON:
                             self.press_confirm()
                         elif event.button == self.B_BUTTON:
                             self.press_cancel()
 
                 if event.type == pygame.JOYHATMOTION:
-                    if self.status == "town" and self.choice_active:
+                    if self.choice_active:
                         hat_x, hat_y = event.value
                         if hat_x != 0 or hat_y != 0:
                             self.choice_index = 1 - self.choice_index
@@ -276,6 +360,22 @@ class Game:
             elif self.status == "test":
                 if self.test_level is not None:
                     self.test_level.run()
+
+            elif self.status == "house":
+                if self.house is not None:
+                    if self.dialogue_active or self.choice_active:
+                        if hasattr(self.house, "draw"):
+                            self.house.draw()
+                        else:
+                            self.house.run()
+                    else:
+                        self.house.run()
+
+                if self.dialogue_active:
+                    self.draw_dialogue()
+
+                if self.choice_active:
+                    self.draw_choice()
 
             pygame.display.update()
             self.clock.tick(60)
@@ -552,6 +652,7 @@ def main_menu(screen):
                     move_selection(1)
 
         pygame.display.update()
+
 
 game = Game()
 main_menu(game.screen)

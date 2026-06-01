@@ -1,15 +1,12 @@
 import pygame
-from support import import_csv_layout, import_cut_graphics
+from pytmx.util_pygame import load_pygame
+from pytmx import TiledTileLayer
 from settings import tile_size
-from NPCS import NPC
 
 class Town:
-
     def __init__(self, surface, camera_group):
-
         self.display_surface = surface
         self.camera_group = camera_group
-
         self.nodes = pygame.sprite.Group()
 
         # Collision objects
@@ -18,105 +15,94 @@ class Town:
         # NPC group
         self.npcs = pygame.sprite.Group()
 
-        self.graphics = import_cut_graphics(
-            '../graphics/terrainTown/Frostpoint Tiles.png'
-        )
+        # Door group
+        self.doors = pygame.sprite.Group()
 
-        # Map layers
-        self.create_layer('../mapData/Town/Floor_Floor.csv')
-        self.create_layer('../mapData/Town/Floor_Fences.csv')
-        self.create_layer('../mapData/Town/Floor_Houses.csv')
+        # Default player start if no PlayerStart tile is found
+        self.player_start = (640, 360)
 
-        # Collision layer
-        self.create_collision_layer(
-            '../mapData/Town/collisions_Collisions.csv'
-        )
+        self.tmx_path = "../mapData/Town/town.tmx"
+        self.tmx_data = load_pygame(self.tmx_path)
 
-        # NPC layer
-        self.create_npc_layer(
-            '../mapData/Town/NPCS_NPCS.csv'
-        )
+        self.load_tmx_map()
 
-    def create_npc_layer(self, path):
-        layout = import_csv_layout(path)
-        for row_index, row in enumerate(layout):
-            for col_index, val in enumerate(row):
-                if val != '-1':
-                    x = col_index * tile_size
-                    y = row_index * tile_size
-                    dialogue = [
-                        "Hello traveler."
-                    ]
-                    level_to_load = None
-                    if val == "5":
-                        dialogue = [
-                            "Welcome to Frostpoint.",
-                            "The winter has lasted years.",
-                            "People fear the crystal...",
-                            "Would you like to enter the test level?"
-                        ]
-                        level_to_load = "test"
-                    elif val == "6":
-                        dialogue = [
-                            "The crystal chose Eira...",
-                            "At least that's what they say.",
-                            "I hope they're right."
-                        ]
-                        level_to_load = None
-                    elif val == '7':
-                        dialogue = [
-                            "I heard the crystal is in the mountains.",
-                            "But no one has been there in ages.",
-                            "It's too dangerous."
-                        ]
-                    npc = NPC(
-                        (x, y),
-                        [self.camera_group, self.npcs],
-                        "Villager",
-                        dialogue,
-                        level_to_load
-                    )
-                    # NPC collision
-                    self.obstacles.add(npc)
+    def scale_surface(self, surface):
+        if surface.get_width() == tile_size and surface.get_height() == tile_size:
+            return surface
 
-    def create_layer(self, path):
-        layout = import_csv_layout(path)
-        for row_index, row in enumerate(layout):
-            for col_index, val in enumerate(row):
-                if val != '-1':
-                    x = col_index * tile_size
-                    y = row_index * tile_size
-                    tile_surf = self.graphics[int(val)]
-                    sprite = pygame.sprite.Sprite()
-                    sprite.image = tile_surf
-                    sprite.rect = sprite.image.get_rect(
-                        topleft=(x, y)
-                    )
+        return pygame.transform.scale(surface, (tile_size, tile_size))
 
-                    self.nodes.add(sprite)
-                    self.camera_group.add(sprite)
+    def load_tmx_map(self):
+        for layer in self.tmx_data.layers:
+            if isinstance(layer, TiledTileLayer):
+                layer_name = layer.name.strip()
 
-    def create_collision_layer(self, path):
-        layout = import_csv_layout(path)
-        for row_index, row in enumerate(layout):
-            for col_index, val in enumerate(row):
-                if val != '-1':
+                if layer_name == "Collisions":
+                    self.create_collision_layer(layer)
+                elif layer_name == "PlayerStart":
+                    self.create_player_start_layer(layer)
+                elif layer_name.startswith("Door"):
+                    self.create_door_layer(layer)
+                elif layer_name == "NPCS":
+                    pass
+                else:
+                    self.create_visual_layer(layer)
+
+    def create_visual_layer(self, layer):
+        for row_index, row in enumerate(layer.data):
+            for col_index, gid in enumerate(row):
+                if gid != 0:
+                    tile_surf = self.tmx_data.get_tile_image_by_gid(gid)
+
+                    if tile_surf is not None:
+                        tile_surf = self.scale_surface(tile_surf)
+                        x = col_index * tile_size
+                        y = row_index * tile_size
+                        sprite = pygame.sprite.Sprite()
+                        sprite.image = tile_surf
+                        sprite.rect = sprite.image.get_rect(topleft=(x, y))
+
+                        if layer.name.strip() == "Nature":
+                            sprite.draw_above_player = True
+                        else:
+                            sprite.draw_above_player = False
+
+                        self.nodes.add(sprite)
+                        self.camera_group.add(sprite)
+
+    def create_collision_layer(self, layer):
+        for row_index, row in enumerate(layer.data):
+            for col_index, gid in enumerate(row):
+                if gid != 0:
                     x = col_index * tile_size
                     y = row_index * tile_size
                     sprite = pygame.sprite.Sprite()
-                    sprite.image = pygame.Surface(
-                        (tile_size, tile_size)
-                    )
-
-                    sprite.image.fill('red')
-                    sprite.image.set_alpha(100)
-
-                    full_rect = pygame.Rect(
-                        x,
-                        y,
-                        tile_size,
-                        tile_size
-                    )
-
-                    sprite.rect = full_rect.inflate(0, -10)
+                    sprite.image = pygame.Surface((tile_size, tile_size), pygame.SRCALPHA)
+                    sprite.rect = pygame.Rect(x, y, tile_size, tile_size)
                     self.obstacles.add(sprite)
+
+    def create_player_start_layer(self, layer):
+        for row_index, row in enumerate(layer.data):
+            for col_index, gid in enumerate(row):
+                if gid != 0:
+                    x = col_index * tile_size + tile_size // 2
+                    y = row_index * tile_size + tile_size
+                    self.player_start = (x, y)
+                    return
+
+    def create_door_layer(self, layer):
+        for row_index, row in enumerate(layer.data):
+            for col_index, gid in enumerate(row):
+                if gid != 0:
+                    x = col_index * tile_size
+                    y = row_index * tile_size
+                    sprite = pygame.sprite.Sprite()
+                    sprite.image = pygame.Surface((tile_size, tile_size), pygame.SRCALPHA)
+                    sprite.rect = pygame.Rect(x, y, tile_size, tile_size)
+
+                    if layer.name.strip() == "Door1":
+                        sprite.house_name = "house1"
+                    else:
+                        sprite.house_name = "house1"
+
+                    self.doors.add(sprite)

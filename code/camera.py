@@ -15,29 +15,35 @@ class CameraGroup(pygame.sprite.Group):
         self.half_h = self.display_surface.get_height() // 2
 
     def center_on(self, target_rect):
-            self.offset.x = round(target_rect.centerx - self.half_w)
-            self.offset.y = round(target_rect.centery - self.half_h)
+        self.offset.x = round(target_rect.centerx - self.half_w)
+        self.offset.y = round(target_rect.centery - self.half_h)
 
-            # Stop the camera from showing anything outside the map
-            if self.offset.x < 0: 
-                self.offset.x = 0
-            if self.offset.y < 0: 
-                self.offset.y = 0
-                
-            if self.offset.x > map_width - screen_width:
-                self.offset.x = map_width - screen_width
-            if self.offset.y > map_height - screen_height:
-                self.offset.y = map_height - screen_height
+        # Stop the camera from showing anything outside the map
+        if self.offset.x < 0:
+            self.offset.x = 0
+        if self.offset.y < 0:
+            self.offset.y = 0
+
+        if self.offset.x > map_width - screen_width:
+            self.offset.x = map_width - screen_width
+        if self.offset.y > map_height - screen_height:
+            self.offset.y = map_height - screen_height
 
     def draw(self, target):
         self.center_on(target.rect)
 
         #draws the tiles first 
         for sprite in self.sprites():
-            if sprite != target:
+            if sprite != target and not getattr(sprite, "draw_above_player", False):
                 offset_pos = sprite.rect.topleft - self.offset
                 self.display_surface.blit(sprite.image, offset_pos)
 
         #draws everything else: fixes the issue with the blinking
         offset_pos = target.rect.topleft - self.offset
         self.display_surface.blit(target.image, offset_pos)
+
+        #draws foreground layers after the player
+        for sprite in self.sprites():
+            if sprite != target and getattr(sprite, "draw_above_player", False):
+                offset_pos = sprite.rect.topleft - self.offset
+                self.display_surface.blit(sprite.image, offset_pos)

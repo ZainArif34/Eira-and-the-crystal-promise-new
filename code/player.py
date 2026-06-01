@@ -17,7 +17,8 @@ class Player(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(midbottom=pos)
 
         # Physical collision box
-        self.hitbox = self.rect.inflate(-25, -50)
+        self.hitbox = pygame.Rect(0, 0, 22, 26)
+        self.hitbox.midbottom = self.rect.midbottom
         self.direction = pygame.math.Vector2(0, 0)
 
         self.normal_speed = 3
@@ -86,6 +87,12 @@ class Player(pygame.sprite.Sprite):
                 for f in idle_right_down
             ]
         }
+
+    def scale_frames(self, frames, width, height):
+        return [
+            pygame.transform.scale(frame, (width, height))
+            for frame in frames
+        ]
 
     def get_input(self):
         keys = pygame.key.get_pressed()
@@ -193,6 +200,34 @@ class Player(pygame.sprite.Sprite):
             self.frame_index = 0
         self.image = animation[int(self.frame_index)]
         # Align sprite with hitbox
+        self.rect.midbottom = self.hitbox.midbottom
+
+    def update_with_limits(self, left_limit, right_limit, top_limit, bottom_limit):
+        self.get_input()
+        self.get_status()
+        self.animate()
+
+        # Horizontal movement
+        self.hitbox.x += round(self.direction.x * self.speed)
+        self.collide('horizontal')
+
+        # Area limits
+        if self.hitbox.left < left_limit:
+            self.hitbox.left = left_limit
+        if self.hitbox.right > right_limit:
+            self.hitbox.right = right_limit
+
+        # Vertical movement
+        self.hitbox.y += round(self.direction.y * self.speed)
+        self.collide('vertical')
+
+        # Area limits
+        if self.hitbox.top < top_limit:
+            self.hitbox.top = top_limit
+        if self.hitbox.bottom > bottom_limit:
+            self.hitbox.bottom = bottom_limit
+
+        # Keep sprite synced to hitbox
         self.rect.center = self.hitbox.center
 
     def collide(self, direction):
