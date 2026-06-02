@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <map version="1.10" tiledversion="1.10.2" orientation="orthogonal" renderorder="right-down" width="7" height="10" tilewidth="32" tileheight="32" infinite="0" nextlayerid="11" nextobjectid="1">
  <tileset firstgid="1" source="interior.tsx"/>
- <tileset firstgid="225" source="../../../../../../Downloads/new/new/Eira-and-The-Crystal-Promise/mapData/Town/setup.tsx"/>
+ <tileset firstgid="234" source="../../Town/setup.tsx"/>
  <layer id="1" name="Floor" width="7" height="10">
   <data encoding="csv">
 1,1,1,1,33,33,33,
