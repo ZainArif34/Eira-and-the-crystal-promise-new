@@ -102,7 +102,12 @@ class Town:
 
                     if layer.name.strip() == "Door1":
                         sprite.house_name = "house1"
+                    elif layer.name.strip() == "Door2":
+                        sprite.house_name = "house2"
+                    
                     else:
                         sprite.house_name = "house1"
+
+                    
 
                     self.doors.add(sprite)
