@@ -19,6 +19,9 @@ class TestLevel:
         self.collectable_csv_path = "../mapData/levels/test/test_collectable.csv"
         self.checkpoint_csv_path = "../mapData/levels/test/test_checkpoint.csv"
         self.enemy_csv_path = "../mapData/levels/test/test_enemies.csv"
+        self.enemy_collision_csv_path = "../mapData/levels/test/test_collisions.csv"
+        self.health_csv_path = "../mapData/levels/test/test_health.csv"
+        self.magic_csv_path = "../mapData/levels/test/test_magic.csv"
         self.tileset_path = "../graphics/terrainlevel/Terrain (32x32).png"
         self.decorations_tileset_path = "../graphics/terrainlevel/Decorations (32x32).png"
         self.tiles = self.import_tileset(self.tileset_path)
@@ -26,8 +29,15 @@ class TestLevel:
         self.terrain_sprites = pygame.sprite.Group()
         self.goal_sprites = pygame.sprite.Group()
         self.collectable_sprites = pygame.sprite.Group()
+        self.health_potion_sprites = pygame.sprite.Group()
+        self.magic_potion_sprites = pygame.sprite.Group()
+        self.health_potion_image = pygame.image.load("../graphics/terrainLevel/potion_A_red_full.png").convert_alpha()
+        self.magic_potion_image = pygame.image.load("../graphics/terrainLevel/potion_A_green_full.png").convert_alpha()
+        self.health_potion_image = pygame.transform.scale(self.health_potion_image, (42, 42))
+        self.magic_potion_image = pygame.transform.scale(self.magic_potion_image, (42, 42))
         self.checkpoint_sprites = pygame.sprite.Group()
         self.enemy_sprites = pygame.sprite.Group()
+        self.enemy_collision_sprites = pygame.sprite.Group()
         self.camera_offset = pygame.math.Vector2(0, 0)
         self.collectables_collected = 0
         self.total_collectables = 0
@@ -37,6 +47,17 @@ class TestLevel:
         self.checkpoints_activated = 0
         self.total_checkpoints = 0
 
+        # Player stats
+        self.max_health = 100
+        self.health = 100
+        self.max_magic = 100
+        self.magic = 50
+
+        # Enemy damage
+        self.enemy_damage = self.max_health / 8
+        self.enemy_damage_cooldown = 800
+        self.last_enemy_damage_time = 0
+
         # Checkpoint sound effect
         self.checkpoint_sound = pygame.mixer.Sound("../audio/sfx/checkpoint/01. 1up.mp3")
         self.checkpoint_sound.set_volume(0.5)
@@ -45,7 +66,11 @@ class TestLevel:
         self.create_goal_layer(self.goal_csv_path)
         self.create_collectable_layer(self.collectable_csv_path)
         self.create_checkpoint_layer(self.checkpoint_csv_path)
+        self.create_enemy_collision_layer(self.enemy_collision_csv_path)
         self.create_enemy_layer(self.enemy_csv_path)
+        self.create_health_potion_layer(self.health_csv_path)
+        self.create_magic_potion_layer(self.magic_csv_path)
+              
 
         spawn_pos = self.get_player_spawn(self.player_csv_path)
         self.current_checkpoint = spawn_pos
@@ -109,6 +134,76 @@ class TestLevel:
 
         self.display_surface.blit(wind_surface, (0, 0))
 
+    def check_enemy_damage(self):
+        if self.player.has_attack_immunity():
+            return
+
+        current_time = pygame.time.get_ticks()
+        for enemy in self.enemy_sprites:
+            if getattr(enemy, "dying", False):
+                continue
+
+            if enemy.rect.colliderect(self.player.hitbox):
+                if current_time - self.last_enemy_damage_time >= self.enemy_damage_cooldown:
+                    self.health -= self.enemy_damage
+                    self.last_enemy_damage_time = current_time
+                    if self.health < 0:
+                        self.health = 0
+
+    def check_player_attack_enemy(self):
+        if self.player.attacking:
+            for enemy in self.enemy_sprites:
+                if getattr(enemy, "dying", False):
+                    continue
+
+                enemy_hurtbox = (
+                    enemy.hurtbox
+                    if hasattr(enemy, "hurtbox")
+                    else enemy.rect
+                )
+
+                if self.player.attack_rect.colliderect(enemy_hurtbox):
+                    if enemy not in self.player.enemies_hit_this_attack:
+                        enemy.take_damage(self.player.attack_damage)
+                        self.player.enemies_hit_this_attack.append(enemy)
+
+    def create_enemy_collision_layer(self, path):
+        layout = import_csv_layout(path)
+        for row_index, row in enumerate(layout):
+            for col_index, val in enumerate(row):
+                val = val.strip()
+                if val != "-1" and val != "":
+                    x = col_index * self.draw_tile_size
+                    y = row_index * self.draw_tile_size + self.y_offset
+                    sprite = pygame.sprite.Sprite()
+                    sprite.image = pygame.Surface((self.draw_tile_size, self.draw_tile_size), pygame.SRCALPHA)
+                    sprite.rect = sprite.image.get_rect(topleft=(x, y))
+                    self.enemy_collision_sprites.add(sprite)
+
+    def draw_player_bars(self):
+        bar_x = 30
+        bar_y = 25
+        bar_width = 220
+        bar_height = 18
+        gap = 8
+
+        health_ratio = self.health / self.max_health
+        magic_ratio = self.magic / self.max_magic
+
+        health_back = pygame.Rect(bar_x, bar_y, bar_width, bar_height)
+        health_fill = pygame.Rect(bar_x, bar_y, int(bar_width * health_ratio), bar_height)
+
+        magic_back = pygame.Rect(bar_x, bar_y + bar_height + gap, bar_width, bar_height)
+        magic_fill = pygame.Rect(bar_x, bar_y + bar_height + gap, int(bar_width * magic_ratio), bar_height)
+
+        pygame.draw.rect(self.display_surface, (35, 35, 45), health_back)
+        pygame.draw.rect(self.display_surface, (180, 40, 40), health_fill)
+        pygame.draw.rect(self.display_surface, (230, 230, 230), health_back, 3)
+
+        pygame.draw.rect(self.display_surface, (35, 35, 45), magic_back)
+        pygame.draw.rect(self.display_surface, (60, 180, 80), magic_fill)
+        pygame.draw.rect(self.display_surface, (230, 230, 230), magic_back, 3)
+
     def import_tileset(self, path):
         tileset_surface = pygame.image.load(path).convert_alpha()
         tiles = []
@@ -128,6 +223,32 @@ class TestLevel:
                 tiles.append(scaled_tile)
 
         return tiles
+
+    def create_health_potion_layer(self, path):
+        layout = import_csv_layout(path)
+        for row_index, row in enumerate(layout):
+            for col_index, val in enumerate(row):
+                val = val.strip()
+                if val != "-1" and val != "":
+                    x = col_index * self.draw_tile_size
+                    y = row_index * self.draw_tile_size + self.y_offset
+                    sprite = pygame.sprite.Sprite()
+                    sprite.image = self.health_potion_image
+                    sprite.rect = sprite.image.get_rect(center=(x + self.draw_tile_size // 2, y + self.draw_tile_size // 2))
+                    self.health_potion_sprites.add(sprite)
+
+    def create_magic_potion_layer(self, path):
+        layout = import_csv_layout(path)
+        for row_index, row in enumerate(layout):
+            for col_index, val in enumerate(row):
+                val = val.strip()
+                if val != "-1" and val != "":
+                    x = col_index * self.draw_tile_size
+                    y = row_index * self.draw_tile_size + self.y_offset
+                    sprite = pygame.sprite.Sprite()
+                    sprite.image = self.magic_potion_image
+                    sprite.rect = sprite.image.get_rect(center=(x + self.draw_tile_size // 2, y + self.draw_tile_size // 2))
+                    self.magic_potion_sprites.add(sprite)
 
     def create_level(self, path):
         layout = import_csv_layout(path)
@@ -153,6 +274,19 @@ class TestLevel:
                         solid_rect = sprite.image.get_bounding_rect()
                         sprite.collision_rect = solid_rect.move(sprite.rect.topleft)
                         self.terrain_sprites.add(sprite)
+
+    def create_enemy_collision_layer(self, path):
+        layout = import_csv_layout(path)
+        for row_index, row in enumerate(layout):
+            for col_index, val in enumerate(row):
+                val = val.strip()
+                if val != "-1" and val != "":
+                    x = col_index * self.draw_tile_size
+                    y = row_index * self.draw_tile_size + self.y_offset
+                    sprite = pygame.sprite.Sprite()
+                    sprite.image = pygame.Surface((self.draw_tile_size, self.draw_tile_size), pygame.SRCALPHA)
+                    sprite.rect = sprite.image.get_rect(topleft=(x, y))
+                    self.enemy_collision_sprites.add(sprite)
 
     def get_player_spawn(self, path):
         layout = import_csv_layout(path)
@@ -219,15 +353,13 @@ class TestLevel:
 
     def create_enemy_layer(self, path):
         layout = import_csv_layout(path)
-
         for row_index, row in enumerate(layout):
             for col_index, val in enumerate(row):
                 val = val.strip()
-
                 if val != "-1" and val != "":
                     x = col_index * self.draw_tile_size + self.draw_tile_size // 2
-                    y = row_index * self.draw_tile_size + self.y_offset + self.draw_tile_size
-                    enemy = SkeletonEnemy((x, y))
+                    y = row_index * self.draw_tile_size + self.y_offset + self.draw_tile_size + 3
+                    enemy = SkeletonEnemy((x, y), self.enemy_collision_sprites)
                     self.enemy_sprites.add(enemy)
 
     def horizontal_movement_collision(self):
@@ -268,6 +400,21 @@ class TestLevel:
                 else:
                     self.goal_locked_timer = 120
 
+    def check_potions(self):
+        for potion in self.health_potion_sprites:
+            if potion.rect.colliderect(self.player.hitbox):
+                potion.kill()
+                self.health += 25
+                if self.health > self.max_health:
+                    self.health = self.max_health
+
+        for potion in self.magic_potion_sprites:
+            if potion.rect.colliderect(self.player.hitbox):
+                potion.kill()
+                self.magic += 25
+                if self.magic > self.max_magic:
+                    self.magic = self.max_magic
+
     def check_collectables(self):
         for collectable in self.collectable_sprites:
             if collectable.rect.colliderect(self.player.hitbox):
@@ -301,6 +448,8 @@ class TestLevel:
         self.draw_sprite_group(self.terrain_sprites)
         self.draw_sprite_group(self.goal_sprites)
         self.draw_sprite_group(self.collectable_sprites)
+        self.draw_sprite_group(self.health_potion_sprites)
+        self.draw_sprite_group(self.magic_potion_sprites)
         self.draw_sprite_group(self.checkpoint_sprites)
         self.draw_sprite_group(self.enemy_sprites)
 
@@ -309,19 +458,22 @@ class TestLevel:
 
         self.draw_wind()
 
+        self.draw_player_bars()
+
         font = pygame.font.Font(None, 36)
         text = font.render("Keys: " + str(self.collectables_collected) + "/" + str(self.total_collectables), True, (255, 255, 255))
-        self.display_surface.blit(text, (30, 30))
+        self.display_surface.blit(text, (30, 85))
 
         checkpoint_text = font.render(
             "Checkpoints: " + str(self.checkpoints_activated) + "/" + str(self.total_checkpoints),
             True,
             (255, 255, 255)
         )
-        self.display_surface.blit(checkpoint_text, (30, 70))
+        self.display_surface.blit(checkpoint_text, (30, 125))
+
         if self.goal_locked_timer > 0:
             locked_text = font.render("You need all 10 keys first!", True, (255, 230, 120))
-            self.display_surface.blit(locked_text, (30, 110))
+            self.display_surface.blit(locked_text, (30, 165))
             self.goal_locked_timer -= 1
 
     def reset_player_if_fallen(self):
@@ -332,10 +484,13 @@ class TestLevel:
 
     def run(self):
         self.player.update()
-        self.enemy_sprites.update()
+        self.enemy_sprites.update(self.player)
+        self.check_player_attack_enemy()
         self.horizontal_movement_collision()
         self.vertical_movement_collision()
+        self.check_potions()
         self.check_collectables()
+        self.check_enemy_damage()
         self.check_checkpoints()
         self.check_goal()
         self.reset_player_if_fallen()
