@@ -21,7 +21,9 @@ class SkeletonEnemy(pygame.sprite.Sprite):
         self.image = self.animations[self.status][self.frame_index]
         self.rect = self.image.get_rect(midbottom=pos)
         self.hurtbox = pygame.Rect(0, 0, 38, 78)
-        self.update_hurtbox()
+        self.body_rect = pygame.Rect(0, 0, 42, 78)
+        self.attack_rect = pygame.Rect(0, 0, 0, 0)
+        self.update_collision_boxes()
         self.speed = 2
         self.facing_right = True
         self.detection_range = 350
@@ -29,12 +31,17 @@ class SkeletonEnemy(pygame.sprite.Sprite):
         self.same_platform_range = 35
         self.attacking = False
         self.dying = False
+        self.attack_has_hit_player = False
         self.attack_cooldown = 900
         self.last_attack_time = 0
         self.health = 50
 
-    def update_hurtbox(self):
+    def update_collision_boxes(self):
         self.hurtbox.midbottom = (
+            self.rect.centerx,
+            self.rect.bottom
+        )
+        self.body_rect.midbottom = (
             self.rect.centerx,
             self.rect.bottom
         )
@@ -43,7 +50,6 @@ class SkeletonEnemy(pygame.sprite.Sprite):
         sheet = pygame.image.load(path).convert_alpha()
         frames = []
         frame_count = sheet.get_width() // self.source_frame_width
-
         for col in range(frame_count):
             x = col * self.source_frame_width
             frame = pygame.Surface((self.source_frame_width, self.source_frame_height), pygame.SRCALPHA)
@@ -66,6 +72,7 @@ class SkeletonEnemy(pygame.sprite.Sprite):
         self.frame_index = 0
         self.attacking = False
         self.dying = True
+        self.attack_rect = pygame.Rect(0, 0, 0, 0)
 
     def can_see_player(self, player):
         distance_x = abs(player.hitbox.centerx - self.rect.centerx)
@@ -94,7 +101,6 @@ class SkeletonEnemy(pygame.sprite.Sprite):
 
     def chase_player(self, player):
         move_speed = abs(self.speed)
-
         if player.hitbox.centerx > self.rect.centerx:
             self.rect.x += move_speed
             self.facing_right = True
@@ -104,10 +110,11 @@ class SkeletonEnemy(pygame.sprite.Sprite):
             self.facing_right = False
             self.stop_at_collision_marker(-1)
 
+        self.update_collision_boxes()
+
     def patrol(self):
         self.rect.x += self.speed
         self.facing_right = self.speed > 0
-
         for sprite in self.collision_sprites:
             if self.rect.colliderect(sprite.rect):
                 if self.speed > 0:
@@ -117,19 +124,47 @@ class SkeletonEnemy(pygame.sprite.Sprite):
 
                 self.speed *= -1
 
+        self.update_collision_boxes()
+
     def start_attack(self):
         current_time = pygame.time.get_ticks()
         if current_time - self.last_attack_time >= self.attack_cooldown:
             self.status = "attack"
             self.attacking = True
+            self.attack_has_hit_player = False
             self.frame_index = 0
             self.last_attack_time = current_time
+
+    def update_attack_rect(self):
+        if self.status == "attack" and not self.dying:
+            current_frame = int(self.frame_index)
+            active_attack_frames = 2 <= current_frame <= 5
+            if active_attack_frames:
+                attack_width = 50
+                attack_height = 48
+                attack_y = self.rect.bottom - attack_height - 18
+                if self.facing_right:
+                    self.attack_rect = pygame.Rect(self.rect.centerx + 5, attack_y, attack_width, attack_height)
+                else:
+                    self.attack_rect = pygame.Rect(self.rect.centerx - attack_width - 5, attack_y, attack_width, attack_height)
+            else:
+                self.attack_rect = pygame.Rect(0, 0, 0, 0)
+        else:
+            self.attack_rect = pygame.Rect(0, 0, 0, 0)
+
+    def can_damage_player(self, player):
+        if self.dying:
+            return False
+
+        if self.attack_has_hit_player:
+            return False
+
+        return self.attack_rect.colliderect(player.hitbox)
 
     def animate(self):
         old_midbottom = self.rect.midbottom
         animation = self.animations[self.status]
         self.frame_index += self.animation_speed
-
         if self.frame_index >= len(animation):
             if self.status == "death":
                 self.kill()
@@ -139,6 +174,7 @@ class SkeletonEnemy(pygame.sprite.Sprite):
             if self.status == "attack":
                 self.status = "walk"
                 self.attacking = False
+                self.attack_rect = pygame.Rect(0, 0, 0, 0)
                 animation = self.animations[self.status]
 
         self.image = animation[int(self.frame_index)]
@@ -146,7 +182,8 @@ class SkeletonEnemy(pygame.sprite.Sprite):
             self.image = pygame.transform.flip(self.image, True, False)
 
         self.rect = self.image.get_rect(midbottom=old_midbottom)
-        self.update_hurtbox()
+        self.update_collision_boxes()
+        self.update_attack_rect()
 
     def update(self, player):
         if self.dying:

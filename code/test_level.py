@@ -135,20 +135,42 @@ class TestLevel:
         self.display_surface.blit(wind_surface, (0, 0))
 
     def check_enemy_damage(self):
-        if self.player.has_attack_immunity():
-            return
-
-        current_time = pygame.time.get_ticks()
         for enemy in self.enemy_sprites:
             if getattr(enemy, "dying", False):
                 continue
 
-            if enemy.rect.colliderect(self.player.hitbox):
-                if current_time - self.last_enemy_damage_time >= self.enemy_damage_cooldown:
-                    self.health -= self.enemy_damage
-                    self.last_enemy_damage_time = current_time
-                    if self.health < 0:
-                        self.health = 0
+            if enemy.can_damage_player(self.player):
+                self.health -= self.enemy_damage
+                enemy.attack_has_hit_player = True
+                if self.health < 0:
+                    self.health = 0
+
+    def enemy_body_collision(self):
+        player = self.player
+        for enemy in self.enemy_sprites:
+            if getattr(enemy, "dying", False):
+                continue
+
+            enemy_body = enemy.body_rect if hasattr(enemy, "body_rect") else enemy.rect.inflate(-90, -20)
+            if enemy_body.colliderect(player.hitbox):
+                overlap_left = player.hitbox.right - enemy_body.left
+                overlap_right = enemy_body.right - player.hitbox.left
+                overlap_top = player.hitbox.bottom - enemy_body.top
+                overlap_bottom = enemy_body.bottom - player.hitbox.top
+                min_overlap = min(overlap_left, overlap_right, overlap_top, overlap_bottom)
+                if min_overlap == overlap_left:
+                    player.hitbox.right = enemy_body.left
+                elif min_overlap == overlap_right:
+                    player.hitbox.left = enemy_body.right
+                elif min_overlap == overlap_top:
+                    player.hitbox.bottom = enemy_body.top
+                    player.direction.y = 0
+                    player.on_ground = True
+                elif min_overlap == overlap_bottom:
+                    player.hitbox.top = enemy_body.bottom
+                    player.direction.y = 0
+
+        player.sync_rect_to_hitbox()
 
     def check_player_attack_enemy(self):
         if self.player.attacking:
@@ -488,6 +510,7 @@ class TestLevel:
         self.check_player_attack_enemy()
         self.horizontal_movement_collision()
         self.vertical_movement_collision()
+        self.enemy_body_collision()
         self.check_potions()
         self.check_collectables()
         self.check_enemy_damage()
@@ -495,4 +518,4 @@ class TestLevel:
         self.check_goal()
         self.reset_player_if_fallen()
         self.update_camera()
-        self.draw_level()   
+        self.draw_level()
