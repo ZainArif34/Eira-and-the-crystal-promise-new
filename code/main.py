@@ -46,7 +46,11 @@ class Game:
         self.level_one_music.set_volume(0.45)
 
         #Screen setup
-        self.screen = pygame.display.set_mode((screen_width, screen_height))
+        self.screen = pygame.display.set_mode(
+            (screen_width, screen_height),
+            pygame.SCALED | pygame.DOUBLEBUF,
+            vsync=1
+        )
         pygame.display.set_caption("Eira and The Crystal Promise")
         self.clock = pygame.time.Clock()
 
@@ -229,7 +233,7 @@ class Game:
         self.town_music.stop()
         self.house_music.stop()
         self.level_one_music.play(loops=-1)
-        
+
     def return_to_town(self):
         self.status = "town"
         self.test_level = None

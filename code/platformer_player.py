@@ -22,12 +22,16 @@ class PlatformerPlayer(pygame.sprite.Sprite):
         self.speed = self.normal_speed
         self.gravity = 0.8
         self.jump_speed = -20
+        self.super_jump_speed = -28
         self.on_ground = False
         self.on_ceiling = False
         self.on_left = False
         self.on_right = False
+
+        # Controller buttons
         self.A_BUTTON = 0
         self.B_BUTTON = 1
+        self.X_BUTTON = 2
         self.Y_BUTTON = 3
 
         # Attack
@@ -36,6 +40,13 @@ class PlatformerPlayer(pygame.sprite.Sprite):
         self.attack_rect = pygame.Rect(0, 0, 0, 0)
         self.attack_immunity = False
         self.enemies_hit_this_attack = []
+
+        # Spell
+        self.spell_casting = False
+
+        # Death
+        self.dead = False
+        self.death_done = False
 
     def import_folder(self, path):
         frames = []
@@ -47,10 +58,8 @@ class PlatformerPlayer(pygame.sprite.Sprite):
 
         return frames
 
-    def import_attack_strip(self, path):
+    def import_strip(self, path, frame_width, frame_height):
         sheet = pygame.image.load(path).convert_alpha()
-        frame_width = 100
-        frame_height = 64
         frames = []
         frame_count = sheet.get_width() // frame_width
         for col in range(frame_count):
@@ -68,11 +77,13 @@ class PlatformerPlayer(pygame.sprite.Sprite):
             "run": self.import_folder(path + "run"),
             "jump": self.import_folder(path + "jump"),
             "fall": self.import_folder(path + "fall"),
-            "attack": self.import_attack_strip(path + "attack/Attack_KG_1.png")
+            "attack": self.import_strip(path + "attack/Attack_KG_1.png", 100, 64),
+            "spell": self.import_strip(path + "spell/Attack_KG_2.png", 100, 64),
+            "death": self.import_strip(path + "death/Dying_KG_2.png", 100, 64)
         }
 
     def start_attack(self):
-        if not self.attacking:
+        if not self.attacking and not self.spell_casting and not self.dead:
             self.attacking = True
             self.attack_immunity = True
             self.enemies_hit_this_attack = []
@@ -80,10 +91,49 @@ class PlatformerPlayer(pygame.sprite.Sprite):
             self.frame_index = 0
             self.direction.x = 0
 
+    def start_spell(self):
+        if not self.spell_casting and not self.attacking and not self.dead:
+            self.spell_casting = True
+            self.status = "spell"
+            self.frame_index = 0
+            self.direction.x = 0
+
+    def start_death(self):
+        if not self.dead:
+            self.dead = True
+            self.death_done = False
+            self.attacking = False
+            self.spell_casting = False
+            self.attack_immunity = False
+            self.attack_rect = pygame.Rect(0, 0, 0, 0)
+            self.direction.x = 0
+            self.direction.y = 0
+            self.status = "death"
+            self.frame_index = 0
+
+    def revive(self):
+        self.dead = False
+        self.death_done = False
+        self.attacking = False
+        self.spell_casting = False
+        self.attack_immunity = False
+        self.attack_rect = pygame.Rect(0, 0, 0, 0)
+        self.status = "idle"
+        self.frame_index = 0
+        self.direction.x = 0
+        self.direction.y = 0
+        self.animate()
+
     def get_input(self):
+        if self.dead:
+            return
+
         keys = pygame.key.get_pressed()
         self.direction.x = 0
         self.speed = self.normal_speed
+
+        if self.spell_casting:
+            return
 
         if keys[pygame.K_x]:
             self.start_attack()
@@ -117,10 +167,6 @@ class PlatformerPlayer(pygame.sprite.Sprite):
                         elif left_stick_x > 0:
                             self.facing_right = True
 
-                if joystick.get_numbuttons() > self.B_BUTTON:
-                    if joystick.get_button(self.B_BUTTON):
-                        self.jump()
-
                 if joystick.get_numhats() > 0:
                     hat_x, hat_y = joystick.get_hat(0)
                     if hat_x < 0:
@@ -134,6 +180,10 @@ class PlatformerPlayer(pygame.sprite.Sprite):
                     if joystick.get_button(self.A_BUTTON) and self.on_ground:
                         self.jump()
 
+                if joystick.get_numbuttons() > self.X_BUTTON:
+                    if joystick.get_button(self.X_BUTTON):
+                        self.super_jump()
+
                 if joystick.get_numbuttons() >= 16:
                     if joystick.get_button(13):
                         self.direction.x = -1
@@ -143,6 +193,14 @@ class PlatformerPlayer(pygame.sprite.Sprite):
                         self.facing_right = True
 
     def get_status(self):
+        if self.dead:
+            self.status = "death"
+            return
+
+        if self.spell_casting:
+            self.status = "spell"
+            return
+
         if self.attacking:
             self.status = "attack"
             return
@@ -162,21 +220,10 @@ class PlatformerPlayer(pygame.sprite.Sprite):
             attack_width = 45
             attack_height = self.hitbox.height + 10
             attack_y = self.hitbox.top - 5
-
             if self.facing_right:
-                self.attack_rect = pygame.Rect(
-                    self.hitbox.right,
-                    attack_y,
-                    attack_width,
-                    attack_height
-                )
+                self.attack_rect = pygame.Rect(self.hitbox.right, attack_y, attack_width, attack_height)
             else:
-                self.attack_rect = pygame.Rect(
-                    self.hitbox.left - attack_width,
-                    attack_y,
-                    attack_width,
-                    attack_height
-                )
+                self.attack_rect = pygame.Rect(self.hitbox.left - attack_width, attack_y, attack_width, attack_height)
         else:
             self.attack_rect = pygame.Rect(0, 0, 0, 0)
 
@@ -186,16 +233,33 @@ class PlatformerPlayer(pygame.sprite.Sprite):
     def animate(self):
         animation = self.animations[self.status]
         old_midbottom = self.hitbox.midbottom
-        speed = 0.22 if self.status == "attack" else self.animation_speed
-        self.frame_index += speed
+        if self.status == "death":
+            speed = 0.16
+        elif self.status == "attack":
+            speed = 0.22
+        elif self.status == "spell":
+            speed = 0.2
+        else:
+            speed = self.animation_speed
 
+        self.frame_index += speed
         if self.frame_index >= len(animation):
-            self.frame_index = 0
-            if self.status == "attack":
+            if self.status == "death":
+                self.frame_index = len(animation) - 1
+                self.death_done = True
+            elif self.status == "attack":
+                self.frame_index = 0
                 self.attacking = False
                 self.attack_immunity = False
                 self.status = "idle"
                 animation = self.animations[self.status]
+            elif self.status == "spell":
+                self.frame_index = 0
+                self.spell_casting = False
+                self.status = "idle"
+                animation = self.animations[self.status]
+            else:
+                self.frame_index = 0
 
         image = animation[int(self.frame_index)]
         if self.facing_right:
@@ -206,14 +270,25 @@ class PlatformerPlayer(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(midbottom=old_midbottom)
 
     def apply_gravity(self):
-        self.direction.y += self.gravity
-        self.hitbox.y += self.direction.y
+        if not self.dead:
+            self.direction.y += self.gravity
+            self.hitbox.y += self.direction.y
 
     def jump(self):
-        self.direction.y = self.jump_speed
+        if not self.dead:
+            self.direction.y = self.jump_speed
+
+    def super_jump(self):
+        if not self.dead:
+            self.direction.y = self.super_jump_speed
 
     def sync_rect_to_hitbox(self):
         self.rect.midbottom = self.hitbox.midbottom
+
+    def update_death(self):
+        self.status = "death"
+        self.animate()
+        self.sync_rect_to_hitbox()
 
     def update(self):
         self.get_input()
