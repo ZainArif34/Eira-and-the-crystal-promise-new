@@ -9,11 +9,11 @@ from platformer_player import PlatformerPlayer
 from enemy import SkeletonEnemy
 from spell import MagicLaser
 
-class TestLevel:
-    def __init__(self, surface, return_to_town):
+class PlatformerLevel:
+    def __init__(self, surface, return_to_town, tmx_path):
         self.display_surface = surface
         self.return_to_town = return_to_town
-        self.tmx_path = "../mapData/levels/test.tmx"
+        self.tmx_path = tmx_path
         self.tmx_data = load_pygame(self.tmx_path)
         self.source_tile_size = self.tmx_data.tilewidth
         self.draw_tile_size = 64
@@ -46,6 +46,10 @@ class TestLevel:
         self.goal_locked_timer = 0
         self.checkpoints_activated = 0
         self.total_checkpoints = 0
+        self.score = 0
+        self.score_goal = 10000
+        self.points_per_enemy = 1000
+        self.keys_required = 10
 
         self.max_health = 100
         self.health = 100
@@ -64,6 +68,11 @@ class TestLevel:
         self.death_confirm_held = False
         self.death_last_move_time = 0
         self.death_move_delay = 180
+
+        # Level completion screen
+        self.level_complete = False
+        self.level_complete_start = 0
+        self.level_complete_duration = 2500
 
         # Revive immunity
         self.revive_immunity = False
@@ -106,6 +115,115 @@ class TestLevel:
                 "drift": random.uniform(-0.12, 0.12)
             }
             self.wind_particles.append(particle)
+
+    def start_level_complete(self):
+        if self.level_complete:
+            return
+
+        self.level_complete = True
+        self.level_complete_start = pygame.time.get_ticks()
+        self.player.direction.x = 0
+        self.player.direction.y = 0
+        self.player.attacking = False
+
+        if hasattr(self.player, "spell_casting"):
+            self.player.spell_casting = False
+
+        self.player.status = "idle"
+        self.player.frame_index = 0
+
+    def draw_level_complete_screen(self):
+        self.display_surface.fill((0, 0, 0))
+
+        title_font = pygame.font.Font("EagleLake-Regular.ttf", 58)
+        small_font = pygame.font.Font("EagleLake-Regular.ttf", 24)
+
+        title = title_font.render(
+            "Level Completed",
+            True,
+            (255, 255, 255)
+        )
+        title_rect = title.get_rect(
+            center=(screen_width // 2, 180)
+        )
+        self.display_surface.blit(title, title_rect)
+
+        subtitle = small_font.render(
+            "Returning to Frostpoint...",
+            True,
+            (175, 175, 185)
+        )
+        subtitle_rect = subtitle.get_rect(
+            center=(screen_width // 2, 245)
+        )
+        self.display_surface.blit(subtitle, subtitle_rect)
+
+        idle_animation = self.player.animations["idle"]
+        animation_time = pygame.time.get_ticks() // 160
+        frame_index = animation_time % len(idle_animation)
+        player_image = idle_animation[frame_index]
+
+        if not self.player.facing_right:
+            player_image = pygame.transform.flip(
+                player_image,
+                True,
+                False
+            )
+
+        player_rect = player_image.get_rect(
+            midbottom=(
+                screen_width // 2,
+                screen_height // 2 + 190
+            )
+        )
+
+        shadow_rect = pygame.Rect(
+            0,
+            0,
+            player_rect.width - 10,
+            14
+        )
+        shadow_rect.center = (
+            player_rect.centerx,
+            player_rect.bottom - 3
+        )
+
+        shadow_surface = pygame.Surface(
+            shadow_rect.size,
+            pygame.SRCALPHA
+        )
+        pygame.draw.ellipse(
+            shadow_surface,
+            (255, 255, 255, 35),
+            shadow_surface.get_rect()
+        )
+
+        self.display_surface.blit(
+            shadow_surface,
+            shadow_rect
+        )
+        self.display_surface.blit(
+            player_image,
+            player_rect
+        )
+
+    def update_level_complete(self):
+        elapsed_time = (
+            pygame.time.get_ticks()
+            - self.level_complete_start
+        )
+
+        if elapsed_time >= self.level_complete_duration:
+            self.return_to_town()
+
+    def damage_enemy(self, enemy, amount):
+        was_alive = enemy.health > 0 and not getattr(enemy, "dying", False)
+        enemy.take_damage(amount)
+
+        if was_alive and enemy.health <= 0:
+            if not getattr(enemy, "points_awarded", False):
+                self.score += self.points_per_enemy
+                enemy.points_awarded = True
 
     def start_death_sequence(self):
         if not self.death_active:
@@ -399,7 +517,7 @@ class TestLevel:
 
                 enemy_hurtbox = enemy.hurtbox if hasattr(enemy, "hurtbox") else enemy.rect
                 if laser.rect.colliderect(enemy_hurtbox):
-                    enemy.take_damage(999)
+                    self.damage_enemy(enemy, 999)
                     laser.kill()
                     break
 
@@ -535,7 +653,7 @@ class TestLevel:
                 enemy_hurtbox = enemy.hurtbox if hasattr(enemy, "hurtbox") else enemy.rect
                 if self.player.attack_rect.colliderect(enemy_hurtbox):
                     if enemy not in self.player.enemies_hit_this_attack:
-                        enemy.take_damage(self.player.attack_damage)
+                        self.damage_enemy(enemy, self.player.attack_damage)
                         self.player.enemies_hit_this_attack.append(enemy)
 
     def check_enemy_damage(self):
@@ -585,10 +703,19 @@ class TestLevel:
                     self.checkpoint_sound.play()
 
     def check_goal(self):
+        has_enough_keys = (
+            self.collectables_collected
+            >= self.keys_required
+        )
+        has_enough_points = (
+            self.score
+            >= self.score_goal
+        )
+
         for goal in self.goal_sprites:
             if goal.rect.colliderect(self.player.hitbox):
-                if self.collectables_collected >= self.total_collectables:
-                    self.return_to_town()
+                if has_enough_keys or has_enough_points:
+                    self.start_level_complete()
                 else:
                     self.goal_locked_timer = 120
 
@@ -633,19 +760,35 @@ class TestLevel:
         self.draw_player_bars()
 
         font = pygame.font.Font(None, 36)
-        text = font.render("Keys: " + str(self.collectables_collected) + "/" + str(self.total_collectables), True, (255, 255, 255))
-        self.display_surface.blit(text, (30, 85))
+
+        score_text = font.render(
+            "Points: " + str(self.score) + "/" + str(self.score_goal),
+            True,
+            (255, 255, 255)
+        )
+        self.display_surface.blit(score_text, (30, 85))
+
+        key_text = font.render(
+            "Keys: " + str(self.collectables_collected) + "/" + str(self.keys_required),
+            True,
+            (255, 255, 255)
+        )
+        self.display_surface.blit(key_text, (30, 125))
 
         checkpoint_text = font.render(
             "Checkpoints: " + str(self.checkpoints_activated) + "/" + str(self.total_checkpoints),
             True,
             (255, 255, 255)
         )
-        self.display_surface.blit(checkpoint_text, (30, 125))
+        self.display_surface.blit(checkpoint_text, (30, 165))
 
         if self.goal_locked_timer > 0:
-            locked_text = font.render("You need all 10 keys first!", True, (255, 230, 120))
-            self.display_surface.blit(locked_text, (30, 165))
+            locked_text = font.render(
+                "You need 10 keys or 10,000 points!",
+                True,
+                (255, 230, 120)
+            )
+            self.display_surface.blit(locked_text, (30, 205))
             self.goal_locked_timer -= 1
 
     def run(self):
@@ -655,6 +798,10 @@ class TestLevel:
             self.draw_level()
             self.draw_death_screen()
             self.handle_death_menu_input()
+            return
+        if self.level_complete:
+            self.draw_level_complete_screen()
+            self.update_level_complete()
             return
 
         self.update_revive_immunity()

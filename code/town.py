@@ -91,6 +91,10 @@ class Town:
                     return
 
     def create_door_layer(self, layer):
+        layer_name = layer.name.strip()
+        door_number = layer_name.replace("Door", "")
+        house_name = "house" + door_number
+
         for row_index, row in enumerate(layer.data):
             for col_index, gid in enumerate(row):
                 if gid != 0:
@@ -99,15 +103,5 @@ class Town:
                     sprite = pygame.sprite.Sprite()
                     sprite.image = pygame.Surface((tile_size, tile_size), pygame.SRCALPHA)
                     sprite.rect = pygame.Rect(x, y, tile_size, tile_size)
-
-                    if layer.name.strip() == "Door1":
-                        sprite.house_name = "house1"
-                    elif layer.name.strip() == "Door2":
-                        sprite.house_name = "house2"
-                    
-                    else:
-                        sprite.house_name = "house1"
-
-                    
-
+                    sprite.house_name = house_name
                     self.doors.add(sprite)

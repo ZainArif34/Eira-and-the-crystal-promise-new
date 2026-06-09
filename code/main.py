@@ -17,7 +17,7 @@ from settings import *
 from town import Town
 from player import Player
 from camera import CameraGroup
-from test_level import TestLevel
+from platformer_level import PlatformerLevel
 from house import House
 
 
@@ -78,13 +78,35 @@ class Game:
 
         # Game state
         self.status = "town"
-        self.test_level = None
+        self.platformer_level = None
+        self.current_level_name = None
         self.house = None
+        self.house_paths = {
+            "house1": "../mapData/Interiors/House1/House1.tmx",
+            "house2": "../mapData/Interiors/House2/House2.tmx",
+            "house3": "../mapData/Interiors/House3/House3.tmx",
+            "house4": "../mapData/Interiors/House4/House4.tmx"
+        }
+
+        # Platformer level paths
+        self.level_paths = {
+            "test": "../mapData/levels/test.tmx",
+            "level1": "../mapData/levels/level1.tmx",
+            "level2": "../mapData/levels/level2.tmx",
+            "level3": "../mapData/levels/level3.tmx",
+            "level4": "../mapData/levels/level4.tmx"
+        }
 
         # Yes / No choice
         self.choice_active = False
         self.choice_index = 0
         self.choice_level = None
+        self.choice_question = "Yes or No?"
+
+        # Crystal shard progress
+        self.completed_shard_levels = set()
+        self.shards_collected = 3
+        self.required_shards = 3
 
         # Snow effect
         self.snow_particles = []
@@ -124,22 +146,53 @@ class Game:
                     particle["size"]
                 )
 
+    def show_locked_boss_door_message(self):
+        shards_remaining = self.required_shards - self.shards_collected
+        self.current_dialogue = [
+            "The door is sealed by a powerful force.",
+            "You must recover all three crystal shards first.",
+            "Shards collected: " + str(self.shards_collected) + "/" + str(self.required_shards)
+        ]
+        self.dialogue_index = 0
+        self.dialogue_text = self.current_dialogue[0]
+        self.dialogue_active = True
+        self.choice_active = False
+        self.choice_level = None
+            
     def check_door_interaction(self):
         interact_rect = self.player.hitbox.inflate(40, 40)
 
         for door in self.town.doors:
             if interact_rect.colliderect(door.rect):
+                if door.house_name == "house2":
+                    if self.shards_collected < self.required_shards:
+                        self.show_locked_boss_door_message()
+                        return True
+
                 self.start_house(door.house_name)
                 return True
 
         return False
+    
+    def award_shard(self, level_id):
+        shard_levels = {"level1", "level3", "level4"}
+
+        if level_id in shard_levels:
+            self.completed_shard_levels.add(level_id)
+            self.shards_collected = len(self.completed_shard_levels)
 
     def start_house(self, house_name):
-        if house_name == "house1":
-            self.house = House(self.screen, "../mapData/Interiors/House1/House1.tmx")
-            self.status = "house"
-            self.town_music.stop()
-            self.house_music.play(loops=-1)
+        if house_name not in self.house_paths:
+            print("House path not found:", house_name)
+            return
+
+        self.house = House(
+            self.screen,
+            self.house_paths[house_name]
+        )
+        self.status = "house"
+        self.town_music.stop()
+        self.house_music.play(loops=-1)
 
     def return_to_town_from_house(self):
         self.status = "town"
@@ -169,6 +222,11 @@ class Game:
             if interact_rect.colliderect(npc.rect):
                 self.current_dialogue = npc.interact()
                 self.choice_level = getattr(npc, "level_to_load", None)
+                self.choice_question = getattr(
+                    npc,
+                    "choice_question",
+                    "Will you accept?"
+                )
                 self.dialogue_index = 0
                 self.dialogue_text = self.current_dialogue[0]
                 self.dialogue_active = True
@@ -208,26 +266,52 @@ class Game:
         self.screen.blit(hint, (900, 620))
 
     def draw_choice(self):
-        box_rect = pygame.Rect(390, 260, 500, 200)
+        box_rect = pygame.Rect(340, 245, 600, 225)
         pygame.draw.rect(self.screen, (20, 20, 30), box_rect)
         pygame.draw.rect(self.screen, (200, 200, 220), box_rect, 4)
 
-        font = pygame.font.Font("EagleLake-Regular.ttf", 30)
-        title = font.render("Enter the test level?", True, (255, 255, 255))
-        self.screen.blit(title, (430, 290))
+        question_font = pygame.font.Font("EagleLake-Regular.ttf", 25)
+        option_font = pygame.font.Font("EagleLake-Regular.ttf", 30)
+
+        title = question_font.render(
+            self.choice_question,
+            True,
+            (255, 255, 255)
+        )
+        title_rect = title.get_rect(center=(box_rect.centerx, box_rect.y + 55))
+        self.screen.blit(title, title_rect)
 
         yes_color = (255, 230, 120) if self.choice_index == 0 else (255, 255, 255)
         no_color = (255, 230, 120) if self.choice_index == 1 else (255, 255, 255)
 
-        yes_text = font.render("> Yes" if self.choice_index == 0 else "  Yes", True, yes_color)
-        no_text = font.render("> No" if self.choice_index == 1 else "  No", True, no_color)
+        yes_text = option_font.render(
+            "> Yes" if self.choice_index == 0 else "  Yes",
+            True,
+            yes_color
+        )
+        no_text = option_font.render(
+            "> No" if self.choice_index == 1 else "  No",
+            True,
+            no_color
+        )
 
-        self.screen.blit(yes_text, (530, 350))
-        self.screen.blit(no_text, (530, 395))
+        self.screen.blit(yes_text, (box_rect.centerx - 75, box_rect.y + 115))
+        self.screen.blit(no_text, (box_rect.centerx - 75, box_rect.y + 165))
 
-    def start_test_level(self):
-        self.test_level = TestLevel(self.screen, self.return_to_town)
-        self.status = "test"
+    def start_platformer_level(self, level_name):
+        level_path = self.level_paths.get(level_name)
+        if level_path is None and isinstance(level_name, str) and level_name.endswith(".tmx"):
+            level_path = level_name
+
+        if level_path is None:
+            print("No platformer level path found for:", level_name)
+            self.choice_active = False
+            self.choice_level = None
+            return
+
+        self.platformer_level = PlatformerLevel(self.screen, self.return_to_town, level_path)
+        self.current_level_name = level_name
+        self.status = "platformer"
         self.choice_active = False
         self.choice_level = None
         self.town_music.stop()
@@ -236,22 +320,23 @@ class Game:
 
     def return_to_town(self):
         self.status = "town"
-        self.test_level = None
+        self.platformer_level = None
+        self.current_level_name = None
         self.level_one_music.stop()
         self.house_music.stop()
         self.town_music.play(loops=-1)
 
     def confirm_choice(self):
         if self.choice_index == 0:
-            if self.choice_level == "test":
-                self.start_test_level()
+            if self.choice_level is not None:
+                self.start_platformer_level(self.choice_level)
         else:
-            self.choice_active = False
-            self.choice_level = None
+            self.cancel_choice()
 
     def cancel_choice(self):
         self.choice_active = False
         self.choice_level = None
+        self.choice_question = "Yes or No?"
         self.choice_index = 0
 
     def press_confirm(self):
@@ -305,7 +390,7 @@ class Game:
                                     else:
                                         self.check_house_npc_interaction()
 
-                    elif self.status == "test":
+                    elif self.status == "platformer":
                         pass
 
                     elif self.status == "town":
@@ -361,9 +446,9 @@ class Game:
                 if self.choice_active:
                     self.draw_choice()
 
-            elif self.status == "test":
-                if self.test_level is not None:
-                    self.test_level.run()
+            elif self.status == "platformer":
+                if self.platformer_level is not None:
+                    self.platformer_level.run()
 
             elif self.status == "house":
                 if self.house is not None:
@@ -381,7 +466,7 @@ class Game:
                 if self.choice_active:
                     self.draw_choice()
 
-            pygame.display.update()
+            pygame.display.flip()
             self.clock.tick(60)
 
 

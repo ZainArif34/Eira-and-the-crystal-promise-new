@@ -4,7 +4,7 @@
   <export target="test/test.csv" format="csv"/>
  </editorsettings>
  <tileset firstgid="1" source="kings and pigs.tsx"/>
- <tileset firstgid="248" source="../../../Eira-and-The-Crystal-Promise/mapData/Town/Frostpoint.tsx"/>
+ <tileset firstgid="248" source="../Town/Frostpoint.tsx"/>
  <tileset firstgid="504" source="decorations.tsx"/>
  <layer id="11" name="background" width="300" height="25">
   <data encoding="csv">
