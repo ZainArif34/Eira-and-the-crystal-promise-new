@@ -95,7 +95,7 @@ class Town:
         door_number = layer_name.replace("Door", "")
         house_name = "house" + door_number
 
-        for row_index, row in enumerate(layer.data):
+        for row_index, row in enumerate(layer.data): 
             for col_index, gid in enumerate(row):
                 if gid != 0:
                     x = col_index * tile_size

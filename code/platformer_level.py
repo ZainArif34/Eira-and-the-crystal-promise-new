@@ -57,6 +57,16 @@ class PlatformerLevel:
         self.magic = 50
         self.enemy_damage = self.max_health / 8
 
+        # Stamina
+        self.max_stamina = 100
+        self.stamina = 100
+        self.stamina_drain_rate = 10
+        self.stamina_regen_rate = 5
+        self.stamina_kill_reward = 20
+        self.stamina_reactivate_amount = 20
+        self.stamina_exhausted = False
+        self.last_stamina_update = pygame.time.get_ticks()
+
         # Spell
         self.spell_cost = self.max_magic / 4
         self.spell_button_held = False
@@ -217,13 +227,22 @@ class PlatformerLevel:
             self.return_to_town()
 
     def damage_enemy(self, enemy, amount):
-        was_alive = enemy.health > 0 and not getattr(enemy, "dying", False)
+        was_alive = (
+            enemy.health > 0
+            and not getattr(enemy, "dying", False)
+        )
+
         enemy.take_damage(amount)
 
         if was_alive and enemy.health <= 0:
             if not getattr(enemy, "points_awarded", False):
                 self.score += self.points_per_enemy
                 enemy.points_awarded = True
+
+                self.stamina += self.stamina_kill_reward
+
+                if self.stamina > self.max_stamina:
+                    self.stamina = self.max_stamina
 
     def start_death_sequence(self):
         if not self.death_active:
@@ -245,7 +264,13 @@ class PlatformerLevel:
         self.player.revive()
 
     def restart_level(self):
-        self.__init__(self.display_surface, self.return_to_town)
+        current_tmx_path = self.tmx_path
+
+        self.__init__(
+            self.display_surface,
+            self.return_to_town,
+            current_tmx_path
+        )
 
     def death_menu_move(self, direction):
         self.death_choice_index += direction
@@ -363,6 +388,32 @@ class PlatformerLevel:
             current_time = pygame.time.get_ticks()
             if current_time - self.revive_immunity_start >= self.revive_immunity_duration:
                 self.revive_immunity = False
+
+    def update_stamina(self):
+        current_time = pygame.time.get_ticks()
+        delta_time = (current_time - self.last_stamina_update) / 1000.0
+        self.last_stamina_update = current_time
+
+        if self.player.shielding:
+            self.stamina -= self.stamina_drain_rate * delta_time
+
+            if self.stamina <= 0:
+                self.stamina = 0
+                self.stamina_exhausted = True
+                self.player.shield_enabled = False
+                self.player.stop_shield()
+        else:
+            self.stamina += self.stamina_regen_rate * delta_time
+
+            if self.stamina > self.max_stamina:
+                self.stamina = self.max_stamina
+
+        if self.stamina_exhausted:
+            if self.stamina >= self.stamina_reactivate_amount:
+                self.stamina_exhausted = False
+                self.player.shield_enabled = True
+        else:
+            self.player.shield_enabled = self.stamina > 0
 
     def clean_name(self, name):
         return name.strip().lower().replace(" ", "").replace("_", "")
@@ -563,20 +614,102 @@ class PlatformerLevel:
         bar_width = 220
         bar_height = 18
         gap = 8
+
         health_ratio = self.health / self.max_health
         magic_ratio = self.magic / self.max_magic
+        stamina_ratio = self.stamina / self.max_stamina
 
-        health_back = pygame.Rect(bar_x, bar_y, bar_width, bar_height)
-        health_fill = pygame.Rect(bar_x, bar_y, int(bar_width * health_ratio), bar_height)
-        magic_back = pygame.Rect(bar_x, bar_y + bar_height + gap, bar_width, bar_height)
-        magic_fill = pygame.Rect(bar_x, bar_y + bar_height + gap, int(bar_width * magic_ratio), bar_height)
+        health_back = pygame.Rect(
+            bar_x,
+            bar_y,
+            bar_width,
+            bar_height
+        )
+        health_fill = pygame.Rect(
+            bar_x,
+            bar_y,
+            int(bar_width * health_ratio),
+            bar_height
+        )
 
-        pygame.draw.rect(self.display_surface, (35, 35, 45), health_back)
-        pygame.draw.rect(self.display_surface, (180, 40, 40), health_fill)
-        pygame.draw.rect(self.display_surface, (230, 230, 230), health_back, 3)
-        pygame.draw.rect(self.display_surface, (35, 35, 45), magic_back)
-        pygame.draw.rect(self.display_surface, (60, 180, 80), magic_fill)
-        pygame.draw.rect(self.display_surface, (230, 230, 230), magic_back, 3)
+        magic_y = bar_y + bar_height + gap
+        magic_back = pygame.Rect(
+            bar_x,
+            magic_y,
+            bar_width,
+            bar_height
+        )
+        magic_fill = pygame.Rect(
+            bar_x,
+            magic_y,
+            int(bar_width * magic_ratio),
+            bar_height
+        )
+
+        stamina_y = magic_y + bar_height + gap
+        stamina_back = pygame.Rect(
+            bar_x,
+            stamina_y,
+            bar_width,
+            bar_height
+        )
+        stamina_fill = pygame.Rect(
+            bar_x,
+            stamina_y,
+            int(bar_width * stamina_ratio),
+            bar_height
+        )
+
+        pygame.draw.rect(
+            self.display_surface,
+            (35, 35, 45),
+            health_back
+        )
+        pygame.draw.rect(
+            self.display_surface,
+            (180, 40, 40),
+            health_fill
+        )
+        pygame.draw.rect(
+            self.display_surface,
+            (230, 230, 230),
+            health_back,
+            3
+        )
+
+        pygame.draw.rect(
+            self.display_surface,
+            (35, 35, 45),
+            magic_back
+        )
+        pygame.draw.rect(
+            self.display_surface,
+            (60, 180, 80),
+            magic_fill
+        )
+        pygame.draw.rect(
+            self.display_surface,
+            (230, 230, 230),
+            magic_back,
+            3
+        )
+
+        pygame.draw.rect(
+            self.display_surface,
+            (35, 35, 45),
+            stamina_back
+        )
+        pygame.draw.rect(
+            self.display_surface,
+            (210, 170, 60),
+            stamina_fill
+        )
+        pygame.draw.rect(
+            self.display_surface,
+            (230, 230, 230),
+            stamina_back,
+            3
+        )
 
     def horizontal_movement_collision(self):
         player = self.player
@@ -657,20 +790,28 @@ class PlatformerLevel:
                         self.player.enemies_hit_this_attack.append(enemy)
 
     def check_enemy_damage(self):
-        if hasattr(self, "revive_immunity"):
-            if self.revive_immunity:
-                return
+        if self.revive_immunity:
+            return
 
         for enemy in self.enemy_sprites:
             if getattr(enemy, "dying", False):
                 continue
 
-            if hasattr(enemy, "can_damage_player"):
-                if enemy.can_damage_player(self.player):
-                    self.health -= self.enemy_damage
-                    enemy.attack_has_hit_player = True
-                    if self.health < 0:
-                        self.health = 0
+            if not hasattr(enemy, "can_damage_player"):
+                continue
+
+            if enemy.can_damage_player(self.player):
+                # Consume this enemy swing either way
+                enemy.attack_has_hit_player = True
+
+                # Shield blocks all damage
+                if getattr(self.player, "shielding", False):
+                    continue
+
+                self.health -= self.enemy_damage
+
+                if self.health < 0:
+                    self.health = 0
 
     def check_potions(self):
         for potion in self.health_potion_sprites:
@@ -766,21 +907,21 @@ class PlatformerLevel:
             True,
             (255, 255, 255)
         )
-        self.display_surface.blit(score_text, (30, 85))
+        self.display_surface.blit(score_text, (30, 115))
 
         key_text = font.render(
             "Keys: " + str(self.collectables_collected) + "/" + str(self.keys_required),
             True,
             (255, 255, 255)
         )
-        self.display_surface.blit(key_text, (30, 125))
+        self.display_surface.blit(key_text, (30, 155))
 
         checkpoint_text = font.render(
             "Checkpoints: " + str(self.checkpoints_activated) + "/" + str(self.total_checkpoints),
             True,
             (255, 255, 255)
         )
-        self.display_surface.blit(checkpoint_text, (30, 165))
+        self.display_surface.blit(checkpoint_text, (30, 195))
 
         if self.goal_locked_timer > 0:
             locked_text = font.render(
@@ -788,7 +929,7 @@ class PlatformerLevel:
                 True,
                 (255, 230, 120)
             )
-            self.display_surface.blit(locked_text, (30, 205))
+            self.display_surface.blit(locked_text, (30, 235))
             self.goal_locked_timer -= 1
 
     def run(self):
@@ -807,13 +948,13 @@ class PlatformerLevel:
         self.update_revive_immunity()
         self.handle_spell_input()
         self.player.update()
+        self.update_stamina()
+
         self.horizontal_movement_collision()
         self.vertical_movement_collision()
-
-        if hasattr(self, "enemy_body_collision"):
-            self.enemy_body_collision()
-
         self.enemy_sprites.update(self.player)
+        self.enemy_body_collision()
+        
         self.spell_sprites.update()
         self.check_spell_enemy_collision()
         self.check_player_attack_enemy()

@@ -42,7 +42,7 @@ class Game:
         self.house_music.set_volume(0.4)
 
         #Level 1 music
-        self.level_one_music = pygame.mixer.Sound("../audio/levels/level 1/3-24. Freedom and Peace.mp3")
+        self.level_one_music = pygame.mixer.Sound("../audio/levels/level 1/2-17. tartarus_0d06.mp3")
         self.level_one_music.set_volume(0.45)
 
         #Screen setup
