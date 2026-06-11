@@ -19,6 +19,7 @@ from player import Player
 from camera import CameraGroup
 from platformer_level import PlatformerLevel
 from house import House
+from boss_chamber import BossChamber
 
 
 class Game:
@@ -79,7 +80,9 @@ class Game:
         # Game state
         self.status = "town"
         self.platformer_level = None
+        self.boss_chamber = None
         self.current_level_name = None
+        self.current_level_music = None
         self.house = None
         self.house_paths = {
             "house1": "../mapData/Interiors/House1/House1.tmx",
@@ -89,14 +92,28 @@ class Game:
         }
 
         # Platformer level paths
-        self.level_paths = {
-            "test": "../mapData/levels/test.tmx",
-            "level1": "../mapData/levels/level1.tmx",
-            "level2": "../mapData/levels/level2.tmx",
-            "level3": "../mapData/levels/level3.tmx",
-            "level4": "../mapData/levels/level4.tmx"
+        self.level_data = {
+            "level1": {
+                "tmx": "../mapData/levels/level1.tmx",
+                "music": "../audio/levels/level 1/2-23. When Mother Was There.mp3",
+                "weather": "cave_drips"
+            },
+            "level2": {
+                "tmx": "../mapData/levels/level2.tmx",
+                "music": "../audio/levels/level 2/5-05. So Happy World.mp3",
+                "weather": "heavy_snow"
+            },
+            "level3": {
+                "tmx": "../mapData/levels/level3.tmx",
+                "music": "../audio/levels/level 3/2-08. A Woman.mp3",
+                "weather": "light_rain"
+            },
+            "level4": {
+                "tmx": "../mapData/levels/level4.tmx",
+                "music": "../audio/levels/level 4/1-48. Living With Determination -Iwatodai Dorm Arrange-.mp3",
+                "weather": "cave_drips"
+            }
         }
-
         # Yes / No choice
         self.choice_active = False
         self.choice_index = 0
@@ -105,7 +122,7 @@ class Game:
 
         # Crystal shard progress
         self.completed_shard_levels = set()
-        self.shards_collected = 3
+        self.shards_collected = 0
         self.required_shards = 3
 
         # Snow effect
@@ -119,6 +136,32 @@ class Game:
                 "drift": random.uniform(-0.4, 0.4)
             }
             self.snow_particles.append(particle)
+
+    def start_boss_chamber(self):
+        self.status = "boss_chamber"
+        self.platformer_level = None
+        self.house = None
+        self.choice_active = False
+        self.dialogue_active = False
+        self.choice_level = None
+
+        self.town_music.stop()
+        self.house_music.stop()
+
+        if self.current_level_music is not None:
+            self.current_level_music.stop()
+
+        self.current_level_music = pygame.mixer.Sound(
+            "../audio/levels/boss/12. Heartful Cry.mp3"
+        )
+        self.current_level_music.set_volume(0.45)
+        self.current_level_music.play(loops=-1)
+
+        self.boss_chamber = BossChamber(
+            self.screen,
+            self.return_to_town,
+            "../mapData/levels/bossChamber.tmx"
+        )
 
     def draw_snow(self):
         for particle in self.snow_particles:
@@ -145,6 +188,31 @@ class Game:
                     (int(screen_x), int(screen_y)),
                     particle["size"]
                 )
+
+    def draw_shard_progress(self):
+        title_font = pygame.font.Font("EagleLake-Regular.ttf", 22)
+        progress_font = pygame.font.Font("EagleLake-Regular.ttf", 17)
+
+        title_font.set_bold(True)
+        progress_font.set_bold(True)
+
+        title_text = title_font.render(
+            "FIND ALL CRYSTAL SHARDS",
+            True,
+            (255, 230, 80)
+        )
+
+        progress_text = progress_font.render(
+            "HINT: check houses   Shards: "
+            + str(self.shards_collected)
+            + "/"
+            + str(self.required_shards),
+            True,
+            (220, 60, 60)
+        )
+
+        self.screen.blit(title_text, (30, 28))
+        self.screen.blit(progress_text, (30, 58))
 
     def show_locked_boss_door_message(self):
         shards_remaining = self.required_shards - self.shards_collected
@@ -298,33 +366,60 @@ class Game:
         self.screen.blit(yes_text, (box_rect.centerx - 75, box_rect.y + 115))
         self.screen.blit(no_text, (box_rect.centerx - 75, box_rect.y + 165))
 
-    def start_platformer_level(self, level_name):
-        level_path = self.level_paths.get(level_name)
-        if level_path is None and isinstance(level_name, str) and level_name.endswith(".tmx"):
-            level_path = level_name
-
-        if level_path is None:
-            print("No platformer level path found for:", level_name)
-            self.choice_active = False
-            self.choice_level = None
+    def start_platformer_level(self, level_id):
+        if level_id not in self.level_data:
+            print("Missing level data for:", level_id)
             return
 
-        self.platformer_level = PlatformerLevel(self.screen, self.return_to_town, level_path)
-        self.current_level_name = level_name
+        level_info = self.level_data[level_id]
+        self.current_level_name = level_id
+
+        self.town_music.stop()
+        self.house_music.stop()
+
+        if self.current_level_music is not None:
+            self.current_level_music.stop()
+
+        self.current_level_music = pygame.mixer.Sound(
+            level_info["music"]
+        )
+        self.current_level_music.set_volume(0.45)
+        self.current_level_music.play(loops=-1)
+
+        self.platformer_level = PlatformerLevel(
+            self.screen,
+            self.return_to_town,
+            level_info["tmx"],
+            level_info["weather"],
+            self.complete_platformer_level
+        )
+
         self.status = "platformer"
         self.choice_active = False
         self.choice_level = None
-        self.town_music.stop()
-        self.house_music.stop()
-        self.level_one_music.play(loops=-1)
 
     def return_to_town(self):
         self.status = "town"
         self.platformer_level = None
+        self.boss_chamber = None
         self.current_level_name = None
-        self.level_one_music.stop()
         self.house_music.stop()
+
+        if self.current_level_music is not None:
+            self.current_level_music.stop()
+            self.current_level_music = None
+
         self.town_music.play(loops=-1)
+
+    def complete_platformer_level(self):
+        completed_level = self.current_level_name
+
+        if completed_level == "level2":
+            self.start_boss_chamber()
+            return
+
+        self.award_shard(completed_level)
+        self.return_to_town()
 
     def confirm_choice(self):
         if self.choice_index == 0:
@@ -439,6 +534,7 @@ class Game:
                 self.camera_group.update()
                 self.camera_group.draw(self.player)
                 self.draw_snow()
+                self.draw_shard_progress()
 
                 if self.dialogue_active:
                     self.draw_dialogue()
@@ -449,6 +545,10 @@ class Game:
             elif self.status == "platformer":
                 if self.platformer_level is not None:
                     self.platformer_level.run()
+
+            elif self.status == "boss_chamber":
+                if self.boss_chamber is not None:
+                    self.boss_chamber.run()
 
             elif self.status == "house":
                 if self.house is not None:

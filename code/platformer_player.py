@@ -45,6 +45,7 @@ class PlatformerPlayer(pygame.sprite.Sprite):
         self.shield_enabled = True
 
         # Attack
+        self.can_attack = True
         self.attacking = False
         self.attack_damage = 25
         self.attack_rect = pygame.Rect(0, 0, 0, 0)
@@ -188,6 +189,9 @@ class PlatformerPlayer(pygame.sprite.Sprite):
         return self.shielding and not self.dead
 
     def start_attack(self):
+        if not self.can_attack:
+            return
+
         if (
             not self.attacking
             and not self.spell_casting

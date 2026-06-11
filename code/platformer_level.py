@@ -9,11 +9,42 @@ from platformer_player import PlatformerPlayer
 from enemy import SkeletonEnemy
 from spell import MagicLaser
 
+class AnimatedGoalShard(pygame.sprite.Sprite):
+    def __init__(self, pos, frames):
+        super().__init__()
+        self.frames = frames
+        self.frame_index = 0
+        self.animation_speed = 0.12
+        self.image = self.frames[self.frame_index]
+        self.rect = self.image.get_rect(center=pos)
+
+    def update(self):
+        self.frame_index += self.animation_speed
+
+        if self.frame_index >= len(self.frames):
+            self.frame_index = 0
+
+        old_center = self.rect.center
+        self.image = self.frames[int(self.frame_index)]
+        self.rect = self.image.get_rect(center=old_center)
+
 class PlatformerLevel:
-    def __init__(self, surface, return_to_town, tmx_path):
+    def __init__(self, surface, return_to_town, tmx_path, weather_type="wind", complete_level=None):
         self.display_surface = surface
         self.return_to_town = return_to_town
+        self.complete_level = complete_level
         self.tmx_path = tmx_path
+        self.weather_type = weather_type
+
+        self.parallax_layers = []
+        self.create_parallax_background()
+        self.background_tint = pygame.Surface(
+            (screen_width, screen_height),
+            pygame.SRCALPHA
+        )
+
+        self.background_tint.fill((10, 20, 45, 65))
+
         self.tmx_data = load_pygame(self.tmx_path)
         self.source_tile_size = self.tmx_data.tilewidth
         self.draw_tile_size = 64
@@ -99,32 +130,156 @@ class PlatformerLevel:
         self.checkpoint_sound = pygame.mixer.Sound("../audio/sfx/checkpoint/01. 1up.mp3")
         self.checkpoint_sound.set_volume(0.5)
 
+        self.attack_sound = pygame.mixer.Sound("../audio/sfx/player/attack.mp3")
+        self.hurt_sound = pygame.mixer.Sound("../audio/sfx/player/hurt.mp3")
+        self.item_sound = pygame.mixer.Sound("../audio/sfx/player/item.mp3")
+        self.shield_sound = pygame.mixer.Sound("../audio/sfx/player/shield.mp3")
+
+        self.attack_sound.set_volume(0.50)
+        self.hurt_sound.set_volume(0.50)
+        self.item_sound.set_volume(0.35)
+        self.shield_sound.set_volume(0.50)
+
+        self.goal_frames = self.load_goal_animation()
         self.load_tmx_level()
         self.current_checkpoint = self.player_start
         self.player = PlatformerPlayer(self.player_start)
 
-        self.wind_particles = []
-        for i in range(90):
-            particle = {
-                "x": random.randint(-100, screen_width + 200),
-                "y": random.randint(0, screen_height),
-                "speed": random.uniform(2.0, 3.8),
-                "length": random.randint(35, 80),
-                "alpha": random.randint(55, 95),
-                "drift": random.uniform(-0.12, 0.12)
-            }
-            self.wind_particles.append(particle)
+        self.weather_particles = []
+        self.create_weather_particles()
 
-        for i in range(180):
-            particle = {
-                "x": random.randint(0, self.level_width),
-                "y": random.randint(0, self.world_height),
-                "speed": random.uniform(2.0, 3.8),
-                "length": random.randint(35, 80),
-                "alpha": random.randint(45, 85),
-                "drift": random.uniform(-0.12, 0.12)
-            }
-            self.wind_particles.append(particle)
+    def load_goal_animation(self):
+        sheet = pygame.image.load(
+            "../graphics/terrainLevel/spr_coin_azu.png"
+        ).convert_alpha()
+
+        frames = []
+        frame_width = 16
+        frame_height = 16
+        frame_count = sheet.get_width() // frame_width
+
+        for frame_index in range(frame_count):
+            frame = pygame.Surface(
+                (frame_width, frame_height),
+                pygame.SRCALPHA
+            )
+
+            frame.blit(
+                sheet,
+                (0, 0),
+                pygame.Rect(
+                    frame_index * frame_width,
+                    0,
+                    frame_width,
+                    frame_height
+                )
+            )
+
+            frame = pygame.transform.scale(
+                frame,
+                (46, 46)
+            )
+
+            frames.append(frame)
+
+        return frames
+
+    def check_attack_sound(self, was_attacking):
+        if self.player.attacking and not was_attacking:
+            self.attack_sound.play()
+
+    def load_parallax_layer(self, path, speed):
+        try:
+            image = pygame.image.load(path).convert_alpha()
+            image = pygame.transform.scale(
+                image,
+                (screen_width, screen_height)
+            )
+
+            self.parallax_layers.append({
+                "image": image,
+                "speed": speed
+            })
+
+        except:
+            print("Could not load parallax layer:", path)
+
+    def create_parallax_background(self):
+        self.parallax_layers = []
+
+        if "level1" in self.tmx_path.lower():
+            folder = "../graphics/backgrounds/level 1/"
+            self.load_parallax_layer(folder + "background1.png", 0.00)
+            self.load_parallax_layer(folder + "background2.png", 0.05)
+            self.load_parallax_layer(folder + "background3.png", 0.12)
+            self.load_parallax_layer(folder + "background4b.png", 0.20)
+
+
+        elif "level2" in self.tmx_path.lower(): 
+            folder = "../graphics/backgrounds/level 2/"
+
+            self.load_parallax_layer(folder + "sky_lightened.png", 0.00)
+            self.load_parallax_layer(folder + "clouds_bg.png", 0.05)
+            self.load_parallax_layer(folder + "glacial_mountains_lightened.png", 0.12)
+            self.load_parallax_layer(folder + "glacial_mountains.png", 0.20)
+            self.load_parallax_layer(folder + "clouds_mg_3.png", 0.30)
+            self.load_parallax_layer(folder + "clouds_mg_2.png", 0.42)
+            self.load_parallax_layer(folder + "clouds_mg_1_lightened.png", 0.55)
+            self.load_parallax_layer(folder + "clouds_mg_1.png", 0.70)
+            self.load_parallax_layer(folder + "cloud_lonely.png", 0.90)
+
+        elif "level3" in self.tmx_path.lower():
+            folder = "../graphics/backgrounds/level 3/"
+            self.load_parallax_layer(folder + "background_layer_1.png", 0.00)
+            self.load_parallax_layer(folder + "background_layer_2.png", 0.05)
+            self.load_parallax_layer(folder + "background_layer_3.png", 0.12)
+
+        elif "level4" in self.tmx_path.lower():
+            folder = "../graphics/backgrounds/level 4/"
+            self.load_parallax_layer(folder + "7.png", 0.00)
+            self.load_parallax_layer(folder + "6.png", 0.05)
+            self.load_parallax_layer(folder + "5.png", 0.12)
+            self.load_parallax_layer(folder + "4.png", 0.20)
+            self.load_parallax_layer(folder + "3.png", 0.30)
+            self.load_parallax_layer(folder + "2.png", 0.42)
+            self.load_parallax_layer(folder + "1.png", 0.55)
+        else:
+            return
+
+
+    def draw_parallax_background(self):
+        if len(self.parallax_layers) == 0:
+            self.display_surface.fill("black")
+            return
+
+        for layer in self.parallax_layers:
+            image = layer["image"]
+            speed = layer["speed"]
+
+            x_offset = -self.camera_offset.x * speed
+            x_offset = x_offset % screen_width
+
+            self.display_surface.blit(
+                image,
+                (x_offset - screen_width, 0)
+            )
+
+            self.display_surface.blit(
+                image,
+                (x_offset, 0)
+            )
+
+            self.display_surface.blit(
+                image,
+                (x_offset + screen_width, 0)
+            )
+
+        self.display_surface.blit(
+            image,
+            (x_offset + screen_width, 0)
+        )
+
+        self.display_surface.blit(self.background_tint, (0, 0))
 
     def start_level_complete(self):
         if self.level_complete:
@@ -224,7 +379,10 @@ class PlatformerLevel:
         )
 
         if elapsed_time >= self.level_complete_duration:
-            self.return_to_town()
+            if self.complete_level is not None:
+                self.complete_level()
+            else:
+                self.return_to_town()
 
     def damage_enemy(self, enemy, amount):
         was_alive = (
@@ -265,11 +423,15 @@ class PlatformerLevel:
 
     def restart_level(self):
         current_tmx_path = self.tmx_path
+        current_weather_type = self.weather_type
+        current_complete_level = self.complete_level
 
         self.__init__(
             self.display_surface,
             self.return_to_town,
-            current_tmx_path
+            current_tmx_path,
+            current_weather_type,
+            current_complete_level
         )
 
     def death_menu_move(self, direction):
@@ -330,6 +492,7 @@ class PlatformerLevel:
             self.confirm_death_choice()
 
         self.death_confirm_held = confirm_pressed
+
 
     def draw_death_screen(self):
         screen_copy = self.display_surface.copy()
@@ -433,7 +596,7 @@ class PlatformerLevel:
                 elif layer_name in ["decor", "decoration", "decorations"]:
                     self.create_visual_tile_layer(layer, self.decoration_sprites, False)
                 elif layer_name == "goal":
-                    self.create_visual_tile_layer(layer, self.goal_sprites, False)
+                    self.create_goal_layer(layer)
                 elif layer_name in ["player", "playerstart"]:
                     self.create_player_layer(layer)
                 elif layer_name in ["collectable", "collectables", "keys"]:
@@ -475,6 +638,20 @@ class PlatformerLevel:
                     y = row_index * self.draw_tile_size + self.y_offset + self.draw_tile_size
                     self.player_start = (x, y)
                     return
+
+    def create_goal_layer(self, layer):
+        for row_index, row in enumerate(layer.data):
+            for col_index, gid in enumerate(row):
+                if gid != 0:
+                    x = col_index * self.draw_tile_size + self.draw_tile_size // 2
+                    y = row_index * self.draw_tile_size + self.y_offset + self.draw_tile_size // 2
+
+                    goal = AnimatedGoalShard(
+                        (x, y),
+                        self.goal_frames
+                    )
+
+                    self.goal_sprites.add(goal)
 
     def create_image_marker_layer(self, layer, image, group, marker_type):
         for row_index, row in enumerate(layer.data):
@@ -572,41 +749,136 @@ class PlatformerLevel:
                     laser.kill()
                     break
 
-    def draw_wind(self):
-        wind_surface = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
-        for particle in self.wind_particles:
-            particle["x"] += particle["speed"]
-            particle["y"] += particle["drift"]
+    def create_weather_particles(self):
+        self.weather_particles = []
 
-            if particle["x"] > self.level_width + particle["length"]:
-                particle["x"] = random.randint(-250, -50)
-                particle["y"] = random.randint(0, self.world_height)
-                particle["speed"] = random.uniform(2.0, 3.8)
-                particle["length"] = random.randint(35, 80)
-                particle["alpha"] = random.randint(45, 90)
+        if self.weather_type == "heavy_snow":
+            particle_count = 350
 
-            if particle["y"] < 0:
-                particle["y"] = self.world_height
+            for i in range(particle_count):
+                particle = {
+                    "x": random.randint(0, self.level_width),
+                    "y": random.randint(0, self.world_height),
+                    "speed": random.uniform(2.0, 4.5),
+                    "drift": random.uniform(-0.8, 0.8),
+                    "size": random.randint(2, 5),
+                    "alpha": random.randint(120, 210)
+                }
+                self.weather_particles.append(particle)
+
+        elif self.weather_type == "light_snow":
+            particle_count = 160
+
+            for i in range(particle_count):
+                particle = {
+                    "x": random.randint(0, self.level_width),
+                    "y": random.randint(0, self.world_height),
+                    "speed": random.uniform(0.8, 1.8),
+                    "drift": random.uniform(-0.35, 0.35),
+                    "size": random.randint(1, 3),
+                    "alpha": random.randint(80, 150)
+                }
+                self.weather_particles.append(particle)
+
+        elif self.weather_type == "light_rain":
+            particle_count = 220
+
+            for i in range(particle_count):
+                particle = {
+                    "x": random.randint(0, self.level_width),
+                    "y": random.randint(0, self.world_height),
+                    "speed": random.uniform(7.0, 11.0),
+                    "drift": random.uniform(-1.8, -0.6),
+                    "length": random.randint(10, 18),
+                    "alpha": random.randint(70, 130)
+                }
+                self.weather_particles.append(particle)
+
+        elif self.weather_type == "cave_drips":
+            particle_count = 90
+
+            for i in range(particle_count):
+                particle = {
+                    "x": random.randint(0, self.level_width),
+                    "y": random.randint(-self.world_height, self.world_height),
+                    "speed": random.uniform(3.0, 7.0),
+                    "drift": random.uniform(-0.15, 0.15),
+                    "length": random.randint(4, 9),
+                    "alpha": random.randint(90, 170),
+                    "size": random.randint(1, 2)
+                }
+                self.weather_particles.append(particle)
+
+    def draw_weather(self):
+        if self.weather_type == "none":
+            return
+
+        weather_surface = pygame.Surface(
+            (screen_width, screen_height),
+            pygame.SRCALPHA
+        )
+
+        for particle in self.weather_particles:
+            particle["x"] += particle["drift"]
+            particle["y"] += particle["speed"]
 
             if particle["y"] > self.world_height:
-                particle["y"] = 0
+                particle["y"] = random.randint(-120, -10)
+                particle["x"] = random.randint(0, self.level_width)
+
+            if particle["x"] < 0:
+                particle["x"] = self.level_width
+
+            if particle["x"] > self.level_width:
+                particle["x"] = 0
 
             screen_x = particle["x"] - self.camera_offset.x
             screen_y = particle["y"] - self.camera_offset.y
 
-            if -100 < screen_x < screen_width + 100 and -30 < screen_y < screen_height + 30:
-                x = int(screen_x)
-                y = int(screen_y)
-                length = particle["length"]
-                alpha = particle["alpha"]
-                for i in range(3):
-                    offset_y = random.randint(-2, 2)
-                    offset_x = random.randint(-3, 3)
-                    start_pos = (x + offset_x, y + offset_y)
-                    end_pos = (x + int(length * random.uniform(0.45, 0.75)), y + offset_y - random.randint(1, 3))
-                    pygame.draw.line(wind_surface, (230, 230, 230, alpha // 3), start_pos, end_pos, 1)
+            if -100 < screen_x < screen_width + 100 and -100 < screen_y < screen_height + 100:
+                if self.weather_type == "light_rain":
+                    pygame.draw.line(
+                        weather_surface,
+                        (150, 175, 205, particle["alpha"]),
+                        (int(screen_x), int(screen_y)),
+                        (
+                            int(screen_x - 3),
+                            int(screen_y + particle["length"])
+                        ),
+                        1
+                    )
 
-        self.display_surface.blit(wind_surface, (0, 0))
+                elif self.weather_type == "cave_drips":
+                    pygame.draw.line(
+                        weather_surface,
+                        (120, 155, 190, particle["alpha"]),
+                        (int(screen_x), int(screen_y)),
+                        (
+                            int(screen_x),
+                            int(screen_y + particle["length"])
+                        ),
+                        1
+                    )
+
+                    pygame.draw.circle(
+                        weather_surface,
+                        (150, 185, 220, particle["alpha"]),
+                        (
+                            int(screen_x),
+                            int(screen_y + particle["length"])
+                        ),
+                        particle["size"]
+                    )
+
+                else:
+                    pygame.draw.circle(
+                        weather_surface,
+                        (235, 235, 240, particle["alpha"]),
+                        (int(screen_x), int(screen_y)),
+                        particle["size"]
+                    )
+
+        self.display_surface.blit(weather_surface, (0, 0))
 
     def draw_player_bars(self):
         bar_x = 30
@@ -806,8 +1078,10 @@ class PlatformerLevel:
 
                 # Shield blocks all damage
                 if getattr(self.player, "shielding", False):
+                    self.shield_sound.play()
                     continue
 
+                self.hurt_sound.play()
                 self.health -= self.enemy_damage
 
                 if self.health < 0:
@@ -817,9 +1091,20 @@ class PlatformerLevel:
         for potion in self.health_potion_sprites:
             if potion.rect.colliderect(self.player.hitbox):
                 potion.kill()
+                self.item_sound.play()
                 self.health += 25
+
                 if self.health > self.max_health:
                     self.health = self.max_health
+
+        for potion in self.magic_potion_sprites:
+            if potion.rect.colliderect(self.player.hitbox):
+                potion.kill()
+                self.item_sound.play()
+                self.magic += 25
+
+                if self.magic > self.max_magic:
+                    self.magic = self.max_magic
 
         for potion in self.magic_potion_sprites:
             if potion.rect.colliderect(self.player.hitbox):
@@ -833,6 +1118,7 @@ class PlatformerLevel:
             if collectable.rect.colliderect(self.player.hitbox):
                 collectable.kill()
                 self.collectables_collected += 1
+                self.item_sound.play()
 
     def check_checkpoints(self):
         for checkpoint in self.checkpoint_sprites:
@@ -881,7 +1167,7 @@ class PlatformerLevel:
             self.display_surface.blit(sprite.image, (offset_x, offset_y))
 
     def draw_level(self):
-        self.display_surface.fill((25, 25, 35))
+        self.draw_parallax_background()
         self.draw_sprite_group(self.background_sprites)
         self.draw_sprite_group(self.terrain_sprites)
         self.draw_sprite_group(self.decoration_sprites)
@@ -897,7 +1183,7 @@ class PlatformerLevel:
         player_offset_y = self.player.rect.y - self.camera_offset.y
         self.display_surface.blit(self.player.image, (player_offset_x, player_offset_y))
 
-        self.draw_wind()
+        self.draw_weather()
         self.draw_player_bars()
 
         font = pygame.font.Font(None, 36)
@@ -947,7 +1233,11 @@ class PlatformerLevel:
 
         self.update_revive_immunity()
         self.handle_spell_input()
+
+        was_attacking = self.player.attacking
         self.player.update()
+        self.check_attack_sound(was_attacking)
+
         self.update_stamina()
 
         self.horizontal_movement_collision()
@@ -956,6 +1246,7 @@ class PlatformerLevel:
         self.enemy_body_collision()
         
         self.spell_sprites.update()
+        self.goal_sprites.update()
         self.check_spell_enemy_collision()
         self.check_player_attack_enemy()
         self.check_potions()
