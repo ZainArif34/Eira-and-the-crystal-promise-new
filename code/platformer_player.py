@@ -391,20 +391,20 @@ class PlatformerPlayer(pygame.sprite.Sprite):
 
     def update_attack_rect(self):
         if self.attacking:
-            attack_width = 45
-            attack_height = self.hitbox.height + 10
-            attack_y = self.hitbox.top - 5
+            attack_width = 58
+            attack_height = self.hitbox.height + 14
+            attack_y = self.hitbox.top - 7
 
             if self.facing_right:
                 self.attack_rect = pygame.Rect(
-                    self.hitbox.right,
+                    self.hitbox.right - 4,
                     attack_y,
                     attack_width,
                     attack_height
                 )
             else:
                 self.attack_rect = pygame.Rect(
-                    self.hitbox.left - attack_width,
+                    self.hitbox.left - attack_width + 4,
                     attack_y,
                     attack_width,
                     attack_height

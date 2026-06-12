@@ -35,7 +35,7 @@ class RespawningPotion(pygame.sprite.Sprite):
 class NinjaBoss(pygame.sprite.Sprite):
     def __init__(self, pos):
         super().__init__()
-        self.scale_factor = 2.0
+        self.scale_factor = 2.5
         self.frame_size = 200
 
         self.animations = {
@@ -60,27 +60,32 @@ class NinjaBoss(pygame.sprite.Sprite):
         self.gravity = 0.8
         self.jump_speed = -25
         self.on_ground = False
-        self.jump_cooldown = 950
+        self.jump_cooldown = 900
         self.last_jump_time = 0
 
-        self.walk_speed = 2.2
-        self.chase_speed = 3.7
-        self.sprint_speed = 5.2
+        self.walk_speed = 2.4
+        self.chase_speed = 4.0
+        self.sprint_speed = 5.4
         self.current_speed = self.chase_speed
 
-        self.attack_range = 140
-        self.attack_cooldown = 2600
+        self.attack_range = 142
+        self.attack_cooldown = 2100
+        self.burst_attack_gap = 700
         self.last_attack_time = 0
-        self.preferred_distance = 230
-        self.close_distance = 95
-        self.facing_deadzone = 55
+        self.preferred_distance = 225
+        self.close_distance = 85
+        self.facing_deadzone = 65
 
         self.ai_mode = "chase"
         self.ai_mode_start = pygame.time.get_ticks()
-        self.ai_mode_duration = random.randint(900, 1700)
+        self.ai_mode_duration = random.randint(850, 1600)
         self.orbit_direction = random.choice([-1, 1])
+        self.chill_until = 0
+        self.next_burst_ready = pygame.time.get_ticks() + 900
+        self.burst_attacks_left = 0
+        self.random_close_attack_time = 0
 
-        self.max_health = 700
+        self.max_health = 750
         self.health = self.max_health
 
         self.attacking = False
@@ -143,8 +148,8 @@ class NinjaBoss(pygame.sprite.Sprite):
         )
         self.hurtbox.midbottom = visible_rect.midbottom
 
-        body_width = max(36, int(self.hurtbox.width * 0.50))
-        body_height = max(70, int(self.hurtbox.height * 0.95))
+        body_width = max(30, int(self.hurtbox.width * 0.42))
+        body_height = max(65, int(self.hurtbox.height * 0.88))
 
         self.body_rect = pygame.Rect(
             0,
@@ -183,26 +188,31 @@ class NinjaBoss(pygame.sprite.Sprite):
             return
 
         self.ai_mode_start = current_time
-        self.ai_mode_duration = random.randint(900, 1800)
+        self.ai_mode_duration = random.randint(800, 1700)
         self.ai_mode = random.choice([
             "chase",
             "chase",
             "slow_chase",
             "orbit",
-            "orbit"
+            "orbit",
+            "sprint"
         ])
 
         if random.random() < 0.55:
             self.orbit_direction *= -1
 
-    def start_attack(self):
+    def start_attack(self, force=False):
         if self.dying or self.attacking or self.status == "hurt":
-            return
+            return False
 
         current_time = pygame.time.get_ticks()
 
-        if current_time - self.last_attack_time < self.attack_cooldown:
-            return
+        if force:
+            if current_time - self.last_attack_time < self.burst_attack_gap:
+                return False
+        else:
+            if current_time - self.last_attack_time < self.attack_cooldown:
+                return False
 
         self.status = random.choice(["attack1", "attack2"])
         self.frame_index = 0
@@ -211,6 +221,7 @@ class NinjaBoss(pygame.sprite.Sprite):
         self.last_attack_time = current_time
         self.direction.x = 0
         self.current_speed = 0
+        return True
 
     def take_damage(self, amount):
         if self.dying:
@@ -275,6 +286,20 @@ class NinjaBoss(pygame.sprite.Sprite):
 
         return self.attack_rect.colliderect(player.hitbox)
 
+    def move_toward_player(self, distance_x, speed):
+        self.status = "run"
+        self.current_speed = speed
+
+        if distance_x > 0:
+            self.direction.x = 1
+        else:
+            self.direction.x = -1
+
+    def orbit_player(self):
+        self.status = "run"
+        self.current_speed = self.walk_speed
+        self.direction.x = self.orbit_direction
+
     def choose_action(self, player):
         self.direction.x = 0
 
@@ -308,15 +333,42 @@ class NinjaBoss(pygame.sprite.Sprite):
             abs_distance_x <= self.attack_range
             and abs_distance_y < 150
         )
-        attack_ready = current_time - self.last_attack_time >= self.attack_cooldown
 
-        if in_attack_zone and attack_ready:
-            self.status = "idle"
-            self.direction.x = 0
-            self.start_attack()
-            return
+        close_enough_for_random = (
+            abs_distance_x <= self.attack_range + 30
+            and abs_distance_y < 165
+        )
 
-        if abs_distance_x < self.close_distance:
+        if current_time < self.chill_until:
+            if close_enough_for_random and current_time >= self.random_close_attack_time:
+                self.random_close_attack_time = current_time + random.randint(700, 1100)
+
+                if random.random() < 0.24:
+                    if self.start_attack(force=True):
+                        return
+
+            if abs_distance_x > self.preferred_distance + 50:
+                self.move_toward_player(distance_x, self.walk_speed)
+            else:
+                self.orbit_player()
+
+        elif in_attack_zone:
+            if self.burst_attacks_left <= 0 and current_time >= self.next_burst_ready:
+                self.burst_attacks_left = random.randint(2, 3)
+
+            if self.burst_attacks_left > 0:
+                if self.start_attack(force=True):
+                    self.burst_attacks_left -= 1
+
+                    if self.burst_attacks_left <= 0:
+                        self.chill_until = current_time + random.randint(2200, 3300)
+                        self.next_burst_ready = self.chill_until + random.randint(900, 1700)
+
+                    return
+
+            self.orbit_player()
+
+        elif abs_distance_x < self.close_distance:
             self.status = "run"
             self.current_speed = self.walk_speed
 
@@ -324,55 +376,25 @@ class NinjaBoss(pygame.sprite.Sprite):
                 self.direction.x = -1
             else:
                 self.direction.x = 1
-
-        elif abs_distance_x <= self.attack_range + 55:
-            self.status = "run"
-            self.current_speed = self.walk_speed
-
-            if self.ai_mode == "orbit":
-                self.direction.x = self.orbit_direction
-            else:
-                if distance_x > 0:
-                    self.direction.x = 1
-                else:
-                    self.direction.x = -1
 
         elif abs_distance_x <= self.preferred_distance:
-            self.status = "run"
-            self.current_speed = self.walk_speed
-
             if self.ai_mode == "orbit":
-                self.direction.x = self.orbit_direction
+                self.orbit_player()
             else:
-                if distance_x > 0:
-                    self.direction.x = 1
-                else:
-                    self.direction.x = -1
+                self.move_toward_player(distance_x, self.walk_speed)
 
         elif abs_distance_x <= self.preferred_distance + 180:
-            self.status = "run"
-
-            if self.ai_mode in ["slow_chase", "orbit"]:
-                self.current_speed = self.walk_speed
-            else:
-                self.current_speed = self.chase_speed
-
             if self.ai_mode == "orbit" and abs_distance_x < self.preferred_distance + 90:
-                self.direction.x = self.orbit_direction
+                self.orbit_player()
+            elif self.ai_mode == "slow_chase":
+                self.move_toward_player(distance_x, self.walk_speed)
+            elif self.ai_mode == "sprint":
+                self.move_toward_player(distance_x, self.sprint_speed)
             else:
-                if distance_x > 0:
-                    self.direction.x = 1
-                else:
-                    self.direction.x = -1
+                self.move_toward_player(distance_x, self.chase_speed)
 
         else:
-            self.status = "run"
-            self.current_speed = self.sprint_speed
-
-            if distance_x > 0:
-                self.direction.x = 1
-            else:
-                self.direction.x = -1
+            self.move_toward_player(distance_x, self.sprint_speed)
 
         if not self.on_ground:
             if self.direction.y < 0:
@@ -420,11 +442,13 @@ class BossChamber:
         self,
         surface,
         return_to_town,
-        tmx_path="../mapData/levels/bossChamber.tmx"
+        tmx_path="../mapData/levels/bossChamber.tmx",
+        restart_battle_callback=None
     ):
         self.display_surface = surface
         self.return_to_town = return_to_town
         self.tmx_path = tmx_path
+        self.restart_battle_callback = restart_battle_callback
 
         self.tmx_data = load_pygame(self.tmx_path)
         self.draw_tile_size = 64
@@ -458,7 +482,7 @@ class BossChamber:
         self.health = 100
         self.max_magic = 100
         self.magic = 100
-        self.enemy_damage = self.max_health / 6
+        self.enemy_damage = self.max_health / 4
 
         self.boss_hit_chain_start = 0
         self.boss_last_hit_time = 0
@@ -466,6 +490,16 @@ class BossChamber:
         self.boss_stunlock_limit = 5000
         self.boss_counter_cooldown = 6000
         self.last_boss_counter_time = 0
+
+        self.boss_heal_interval = 50000
+        self.boss_heal_duration = 7000
+        self.boss_heal_percent = 0.35
+        self.boss_last_heal_time = pygame.time.get_ticks()
+        self.boss_healing = False
+        self.boss_heal_start_time = 0
+        self.boss_heal_last_update = 0
+        self.boss_heal_amount_remaining = 0
+        self.boss_heal_rate = 0
 
         self.max_stamina = 100
         self.stamina = 100
@@ -490,6 +524,72 @@ class BossChamber:
         self.death_confirm_held = False
         self.death_last_move_time = 0
         self.death_move_delay = 180
+
+        # Ending / credits scene
+        self.ending_state = "fight"
+        self.ending_dialogue = [
+            "The guardian falls... and the crystal begins to shine again.",
+            "With it, a man emerges from an icy prison, it's your fiance!",
+            "I missed you so much.."
+        ]
+        self.ending_dialogue_index = 0
+        self.ending_dialogue_start_time = 0
+        self.ending_dialogue_line_duration = 3000
+
+        self.credits_lines = [
+            "Eira and The Crystal Promise",
+            "",
+            "Created By",
+            "Zain Arif",
+            "Iman Razzaq",
+            "Yelixa Tan",
+            "",
+            "Programming",
+            "Zain Arif",
+            "Yelixa Tan",
+            "",
+            "Story",
+            "Zain Arif",
+            "Yelixa Tan",
+            "",
+            "Art, Level Design, and Sound Direction",
+            "Zain Arif",
+            "Yelixa Tan",
+            "LuizMelo",
+            "Pixel Frog",
+            "JumpButton",
+            "MonoPixelArt",
+            "Cainos",
+            "vnitti",
+            "David G",
+            "Sscary",
+            "nyx",
+            "brullov",
+            "Mattz",
+            "",
+            "Music",
+            "Atlus Sound Team",
+            "Pokemon Company",
+            "Nintendo"
+            "",
+            "Thank you for playing",
+            "",
+            "The End"
+        ]
+        self.credits_scroll_y = screen_height + 90
+        self.credits_scroll_speed = 0.75
+        self.credits_finished_time = 0
+        self.credits_end_delay = 3000
+
+        self.credits_music_path = "../audio/credits/1-02. Glimpse of a Memory.mp3"
+        self.credits_music = None
+        self.credits_music_started = False
+
+        self.screen_shake_end = 0
+        self.screen_shake_intensity = 0
+        self.zero_stamina_input_held = False
+        self.stamina_lock_active = False
+        self.stamina_lock_end = 0
 
         self.attack_sound = pygame.mixer.Sound("../audio/sfx/player/attack.mp3")
         self.hurt_sound = pygame.mixer.Sound("../audio/sfx/player/hurt.mp3")
@@ -842,19 +942,97 @@ class BossChamber:
         if self.player.attacking and not was_attacking:
             self.attack_sound.play()
 
+    def start_screen_shake(self, duration=220, intensity=7):
+        self.screen_shake_end = pygame.time.get_ticks() + duration
+        self.screen_shake_intensity = intensity
+
+    def trigger_stamina_empty_penalty(self):
+        current_time = pygame.time.get_ticks()
+        self.stamina = 0
+        self.stamina_exhausted = True
+        self.stamina_lock_active = True
+        self.stamina_lock_end = current_time + 1500
+        self.player.can_attack = False
+        self.player.shield_enabled = False
+        self.player.stop_shield()
+        self.player.attacking = False
+        self.player.spell_casting = False
+        self.player.attack_immunity = False
+        self.player.attack_rect = pygame.Rect(0, 0, 0, 0)
+        self.player.direction.x = 0
+        self.start_screen_shake()
+
+    def handle_zero_stamina_feedback(self):
+        if self.stamina > 0:
+            self.zero_stamina_input_held = False
+            return
+
+        keys = pygame.key.get_pressed()
+        zero_stamina_pressed = (
+            keys[pygame.K_x]
+            or keys[pygame.K_LSHIFT]
+            or keys[pygame.K_RSHIFT]
+        )
+
+        if pygame.joystick.get_count() > 0:
+            joystick = pygame.joystick.Joystick(0)
+
+            if joystick.get_numbuttons() > self.player.Y_BUTTON:
+                if joystick.get_button(self.player.Y_BUTTON):
+                    zero_stamina_pressed = True
+
+            if joystick.get_numbuttons() > self.player.LB_BUTTON:
+                if joystick.get_button(self.player.LB_BUTTON):
+                    zero_stamina_pressed = True
+
+            if joystick.get_numaxes() > self.player.LT_AXIS:
+                if joystick.get_axis(self.player.LT_AXIS) > self.player.LT_DEADZONE:
+                    zero_stamina_pressed = True
+
+        if zero_stamina_pressed and not self.zero_stamina_input_held:
+            self.trigger_stamina_empty_penalty()
+
+        self.zero_stamina_input_held = zero_stamina_pressed
+
+    def apply_stamina_lock(self):
+        if not self.stamina_lock_active:
+            return
+
+        current_time = pygame.time.get_ticks()
+
+        if current_time >= self.stamina_lock_end:
+            self.stamina_lock_active = False
+            return
+
+        self.player.direction.x = 0
+        self.player.attacking = False
+        self.player.spell_casting = False
+        self.player.shielding = False
+        self.player.shield_raised = False
+        self.player.attack_immunity = False
+        self.player.attack_rect = pygame.Rect(0, 0, 0, 0)
+        self.player.can_attack = False
+        self.player.shield_enabled = False
+
+        if self.player.on_ground:
+            self.player.status = "idle"
+
     def update_stamina(self):
         current_time = pygame.time.get_ticks()
         delta_time = (current_time - self.last_stamina_update) / 1000.0
         self.last_stamina_update = current_time
 
+        if self.stamina_lock_active:
+            self.stamina = 0
+            self.apply_stamina_lock()
+            return
+
         if self.player.shielding:
             self.stamina -= self.stamina_drain_rate * delta_time
 
             if self.stamina <= 0:
-                self.stamina = 0
-                self.stamina_exhausted = True
-                self.player.shield_enabled = False
-                self.player.stop_shield()
+                self.trigger_stamina_empty_penalty()
+                return
         else:
             self.stamina += self.stamina_regen_rate * delta_time
 
@@ -871,11 +1049,7 @@ class BossChamber:
         self.player.can_attack = self.stamina >= self.attack_stamina_cost
 
         if self.stamina < self.attack_stamina_cost and self.player.attacking:
-            self.player.attacking = False
-            self.player.attack_immunity = False
-            self.player.attack_rect = pygame.Rect(0, 0, 0, 0)
-            self.player.status = "idle"
-            self.player.frame_index = 0
+            self.trigger_stamina_empty_penalty()
 
     def horizontal_movement_collision(self):
         player = self.player
@@ -957,22 +1131,39 @@ class BossChamber:
         if self.boss.dying:
             return
 
-        if self.boss.attacking:
+        if self.boss.attacking or self.player.attacking or self.player.spell_casting:
             return
 
         if self.boss.body_rect.colliderect(self.player.hitbox):
             overlap_left = self.player.hitbox.right - self.boss.body_rect.left
             overlap_right = self.boss.body_rect.right - self.player.hitbox.left
+            smaller_overlap = min(overlap_left, overlap_right)
+
+            if smaller_overlap < 8:
+                return
+
+            push_amount = min(6, smaller_overlap)
 
             if overlap_left < overlap_right:
-                self.player.hitbox.right = self.boss.body_rect.left
+                self.player.hitbox.x -= push_amount
             else:
-                self.player.hitbox.left = self.boss.body_rect.right
+                self.player.hitbox.x += push_amount
+
+            for sprite in self.terrain_sprites:
+                if sprite.collision_rect.colliderect(self.player.hitbox):
+                    if overlap_left < overlap_right:
+                        self.player.hitbox.left = sprite.collision_rect.right
+                    else:
+                        self.player.hitbox.right = sprite.collision_rect.left
 
             self.player.sync_rect_to_hitbox()
 
     def check_player_attack_boss(self):
         if self.boss.dying:
+            return
+
+        if self.player.attacking and self.stamina < self.attack_stamina_cost:
+            self.trigger_stamina_empty_penalty()
             return
 
         if self.stamina < self.attack_stamina_cost:
@@ -987,12 +1178,14 @@ class BossChamber:
                         self.boss_hit_chain_start = current_time
 
                     self.boss_last_hit_time = current_time
+                    self.cancel_boss_healing_cycle()
                     self.boss.take_damage(25)
                     self.player.enemies_hit_this_attack.append(self.boss)
                     self.stamina -= self.attack_stamina_cost
 
-                    if self.stamina < 0:
-                        self.stamina = 0
+                    if self.stamina <= 0:
+                        self.trigger_stamina_empty_penalty()
+                        return
 
                     if (
                         current_time - self.boss_hit_chain_start >= self.boss_stunlock_limit
@@ -1006,6 +1199,7 @@ class BossChamber:
 
         for laser in self.spell_sprites:
             if laser.rect.colliderect(self.boss.hurtbox):
+                self.cancel_boss_healing_cycle()
                 self.boss.take_damage(self.spell_damage)
                 laser.kill()
 
@@ -1074,11 +1268,14 @@ class BossChamber:
         self.player.revive()
 
     def restart_battle(self):
-        self.__init__(
-            self.display_surface,
-            self.return_to_town,
-            self.tmx_path
-        )
+        if self.restart_battle_callback is not None:
+            self.restart_battle_callback()
+        else:
+            self.__init__(
+                self.display_surface,
+                self.return_to_town,
+                self.tmx_path
+            )
 
     def death_menu_move(self, direction):
         self.death_choice_index += direction
@@ -1224,16 +1421,126 @@ class BossChamber:
             (box_rect.x + 55, box_rect.y + 285)
         )
 
-    def check_boss_defeated(self):
-        if self.boss.death_finished and not self.victory_active:
-            self.victory_active = True
-            self.victory_start = pygame.time.get_ticks()
+    def cancel_boss_healing_cycle(self):
+        if not self.boss_healing:
+            return
 
-        if self.victory_active:
-            current_time = pygame.time.get_ticks()
+        self.boss_healing = False
+        self.boss_heal_amount_remaining = 0
+        self.boss_heal_rate = 0
+        self.boss_last_heal_time = pygame.time.get_ticks()
 
-            if current_time - self.victory_start >= self.victory_duration:
+    def update_boss_healing(self):
+        if self.boss.dying or self.victory_active or self.death_active or self.ending_state != "fight":
+            return
+
+        current_time = pygame.time.get_ticks()
+
+        if not self.boss_healing:
+            if current_time - self.boss_last_heal_time >= self.boss_heal_interval:
+                missing_health = self.boss.max_health - self.boss.health
+
+                if missing_health <= 0:
+                    self.boss_last_heal_time = current_time
+                    return
+
+                self.boss_healing = True
+                self.boss_heal_start_time = current_time
+                self.boss_heal_last_update = current_time
+                self.boss_heal_amount_remaining = min(
+                    self.boss.max_health * self.boss_heal_percent,
+                    missing_health
+                )
+                self.boss_heal_rate = self.boss_heal_amount_remaining / (self.boss_heal_duration / 1000.0)
+
+            return
+
+        delta_time = (current_time - self.boss_heal_last_update) / 1000.0
+        self.boss_heal_last_update = current_time
+        heal_amount = self.boss_heal_rate * delta_time
+
+        if heal_amount > self.boss_heal_amount_remaining:
+            heal_amount = self.boss_heal_amount_remaining
+
+        self.boss.health += heal_amount
+        self.boss_heal_amount_remaining -= heal_amount
+
+        if self.boss.health > self.boss.max_health:
+            self.boss.health = self.boss.max_health
+            self.boss_heal_amount_remaining = 0
+
+        if (
+            self.boss_heal_amount_remaining <= 0
+            or current_time - self.boss_heal_start_time >= self.boss_heal_duration
+        ):
+            self.boss_healing = False
+            self.boss_last_heal_time = current_time
+
+    def start_ending_music(self):
+        if self.credits_music_started:
+            return
+
+        self.credits_music_started = True
+        pygame.mixer.stop()
+
+        try:
+            self.credits_music = pygame.mixer.Sound(self.credits_music_path)
+            self.credits_music.set_volume(0.5)
+            self.credits_music.play(loops=-1)
+        except:
+            print("Credits music not found:", self.credits_music_path)
+
+    def start_ending_dialogue(self):
+        self.victory_active = True
+        self.ending_state = "dialogue"
+        self.ending_dialogue_index = 0
+        self.ending_dialogue_start_time = pygame.time.get_ticks()
+        self.player.direction.x = 0
+        self.player.direction.y = 0
+        self.player.attacking = False
+        self.player.spell_casting = False
+        self.player.shielding = False
+        self.player.status = "idle"
+        self.player.frame_index = 0
+        self.start_ending_music()
+
+    def start_credits(self):
+        self.ending_state = "credits"
+        self.credits_scroll_y = screen_height + 90
+        self.credits_finished_time = 0
+
+    def update_ending_scene(self):
+        current_time = pygame.time.get_ticks()
+
+        if self.ending_state == "dialogue":
+            if current_time - self.ending_dialogue_start_time >= self.ending_dialogue_line_duration:
+                self.ending_dialogue_index += 1
+
+                if self.ending_dialogue_index >= len(self.ending_dialogue):
+                    self.start_credits()
+                else:
+                    self.ending_dialogue_start_time = current_time
+
+        elif self.ending_state == "credits":
+            self.credits_scroll_y -= self.credits_scroll_speed
+
+            final_line_y = self.credits_scroll_y + len(self.credits_lines) * 52
+
+            if final_line_y < screen_height // 2 and self.credits_finished_time == 0:
+                self.credits_finished_time = current_time
+
+            if (
+                self.credits_finished_time != 0
+                and current_time - self.credits_finished_time >= self.credits_end_delay
+            ):
+                if self.credits_music is not None:
+                    self.credits_music.stop()
+
                 self.return_to_town()
+
+    def check_boss_defeated(self):
+        if self.boss.death_finished and self.ending_state == "fight":
+            self.start_ending_dialogue()
 
     def update_camera(self):
         target_x = self.player.hitbox.centerx - screen_width // 2
@@ -1242,6 +1549,20 @@ class BossChamber:
         max_y = max(0, self.world_height - screen_height)
         self.camera_offset.x = max(0, min(target_x, max_x))
         self.camera_offset.y = max(0, min(target_y, max_y))
+
+        current_time = pygame.time.get_ticks()
+
+        if current_time < self.screen_shake_end:
+            shake_x = random.randint(
+                -self.screen_shake_intensity,
+                self.screen_shake_intensity
+            )
+            shake_y = random.randint(
+                -self.screen_shake_intensity,
+                self.screen_shake_intensity
+            )
+            self.camera_offset.x = max(0, min(self.camera_offset.x + shake_x, max_x))
+            self.camera_offset.y = max(0, min(self.camera_offset.y + shake_y, max_y))
 
     def draw_sprite_group(self, group):
         for sprite in group:
@@ -1358,20 +1679,83 @@ class BossChamber:
         text_rect = text.get_rect(center=(screen_width // 2, bar_y + 45))
         self.display_surface.blit(text, text_rect)
 
-    def draw_victory_screen(self):
-        if not self.victory_active:
+    def draw_text_box(self, text):
+        box_rect = pygame.Rect(60, 500, 1160, 160)
+        pygame.draw.rect(self.display_surface, (20, 20, 30), box_rect)
+        pygame.draw.rect(self.display_surface, (200, 200, 220), box_rect, 4)
+
+        font = pygame.font.Font("EagleLake-Regular.ttf", 30)
+        small_font = pygame.font.Font("EagleLake-Regular.ttf", 17)
+
+        words = text.split(" ")
+        lines = []
+        current_line = ""
+
+        for word in words:
+            test_line = current_line + word + " "
+
+            if font.size(test_line)[0] <= box_rect.width - 70:
+                current_line = test_line
+            else:
+                lines.append(current_line.strip())
+                current_line = word + " "
+
+        if current_line.strip() != "":
+            lines.append(current_line.strip())
+
+        for index, line in enumerate(lines[:3]):
+            text_surface = font.render(line, True, (255, 255, 255))
+            self.display_surface.blit(
+                text_surface,
+                (box_rect.x + 35, box_rect.y + 35 + index * 38)
+            )
+
+        hint = small_font.render(
+            "The story continues...",
+            True,
+            (180, 180, 180)
+        )
+        self.display_surface.blit(hint, (box_rect.right - 285, box_rect.bottom - 35))
+
+    def draw_ending_dialogue(self):
+        if self.ending_state != "dialogue":
             return
 
-        font = pygame.font.Font("EagleLake-Regular.ttf", 48)
-        text = font.render(
-            "Keeper Defeated! Crystal Restored!",
-            True,
-            (255, 255, 255)
-        )
-        text_rect = text.get_rect(center=(screen_width // 2, 170))
-        self.display_surface.blit(text, text_rect)
+        if self.ending_dialogue_index < len(self.ending_dialogue):
+            self.draw_text_box(
+                self.ending_dialogue[self.ending_dialogue_index]
+            )
+
+    def draw_credits_screen(self):
+        self.display_surface.fill((0, 0, 0))
+
+        title_font = pygame.font.Font("EagleLake-Regular.ttf", 48)
+        line_font = pygame.font.Font("EagleLake-Regular.ttf", 30)
+
+        for index, line in enumerate(self.credits_lines):
+            y = self.credits_scroll_y + index * 52
+
+            if -80 < y < screen_height + 80:
+                if index == 0 or line == "The End":
+                    font = title_font
+                    color = (255, 255, 255)
+                elif line == "":
+                    continue
+                else:
+                    font = line_font
+                    color = (220, 220, 230)
+
+                text_surface = font.render(line, True, color)
+                text_rect = text_surface.get_rect(
+                    center=(screen_width // 2, y)
+                )
+                self.display_surface.blit(text_surface, text_rect)
 
     def draw_chamber(self):
+        if self.ending_state == "credits":
+            self.draw_credits_screen()
+            return
+
         self.draw_parallax_background()
         self.draw_sprite_group(self.background_sprites)
         self.draw_sprite_group(self.terrain_sprites)
@@ -1389,9 +1773,12 @@ class BossChamber:
         self.display_surface.blit(self.player.image, (player_x, player_y))
 
         self.draw_weather()
-        self.draw_player_bars()
-        self.draw_boss_bar()
-        self.draw_victory_screen()
+
+        if self.ending_state == "fight":
+            self.draw_player_bars()
+            self.draw_boss_bar()
+
+        self.draw_ending_dialogue()
 
     def run(self):
         if self.death_active:
@@ -1401,12 +1788,21 @@ class BossChamber:
             self.draw_death_screen()
             return
 
+        if self.ending_state != "fight":
+            self.update_ending_scene()
+            self.update_camera()
+            self.draw_chamber()
+            return
+
+        self.handle_zero_stamina_feedback()
         self.handle_spell_input()
 
         was_attacking = self.player.attacking
         self.player.update()
+        self.apply_stamina_lock()
         self.check_attack_sound(was_attacking)
         self.update_stamina()
+        self.apply_stamina_lock()
 
         self.horizontal_movement_collision()
         self.vertical_movement_collision()
@@ -1417,6 +1813,7 @@ class BossChamber:
             self.boss_vertical_movement_collision()
             self.boss_body_collision()
             self.check_boss_damage()
+            self.update_boss_healing()
 
         self.spell_sprites.update()
         self.health_potion_sprites.update()

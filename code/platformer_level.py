@@ -313,8 +313,13 @@ class PlatformerLevel:
         )
         self.display_surface.blit(title, title_rect)
 
+        if "level2" in self.tmx_path.lower():
+            subtitle_message = "An enemy appeared!"
+        else:
+            subtitle_message = "Returning to Frostpoint..."
+
         subtitle = small_font.render(
-            "Returning to Frostpoint...",
+            subtitle_message,
             True,
             (175, 175, 185)
         )

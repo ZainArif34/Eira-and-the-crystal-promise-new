@@ -43,7 +43,7 @@ class SkeletonEnemy(pygame.sprite.Sprite):
         self.attack_has_hit_player = False
         self.attack_cooldown = 900
         self.last_attack_time = 0
-        self.health = 150
+        self.health = 100
 
     def update_collision_boxes(self):
         self.hurtbox.midbottom = (

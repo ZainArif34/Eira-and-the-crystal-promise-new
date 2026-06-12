@@ -12,41 +12,78 @@ HOUSE_NPC_DATA = {
     "house1": {
         "name": "Frostpoint Elder",
         "dialogue": [
-            "Eira, the storm beyond this house has grown stronger.",
-            "Something within the frozen pass is feeding it.",
-            "I believe the first crystal shard is hidden there."
+            "I hear you are looking for someone, Eira.",
+            "people usually only go missing in this town,",
+            "in the outskirts of the Frostpoint mountains",
+            "But..",
+            "That part of the city has been cursed,",
+            "the only way to break the curse is to reunite the shards",
+            "One of the shards is hidden in an abandoned mine in the mountains,",
+            "but be careful,",
+            "its a long dangerous hike",
+            "I can help you get there,",
+            "but you won't be able to get back here until you find the shard."
         ],
-        "question": "Will you search the frozen pass?",
+        "question": "Will you travel to the cave mine?",
         "level": "level1"
     },
     "house2": {
         "name": "Village Scholar",
         "dialogue": [
-            "The crystal's power has disturbed the old ruins.",
-            "Skeletons now wander where no living person dares to go.",
-            "The second shard may be buried somewhere inside."
+            "Dear child, you have freed me at last,",
+            "You have my greatest thanks child",
+            "So you want to find your fiance...",
+            "He's most likely trapped in the mountain side",
+            "I can help you get there, yet I can't help you survive",
+            "you've already shown to be quite the survivalist though,",
+            "so I have faith in you",
+            "That mountain, however will be the hardest trial you've faced.",
+            "At the end expect the last shard that will free your fiance",
+            "it won't be easy though as the crystal is guarded by an ancient warrior,",
+            "who's sworn to protect the shard",
+            "He's been guarding it for centuries, so he's quite powerful,",
+            "but I know you can do it!",
+            "He may be dangerous, but he's not evil, so please take pity.",
+            "Your journey is coming to an end, I can tell.",
+            "Good luck Eira!"
         ],
-        "question": "Will you investigate the ruins?",
+        "question": "Will you take on the final challenge?",
         "level": "level2"
     },
     "house3": {
         "name": "Mountain Guardian",
         "dialogue": [
-            "Few have survived the path beyond the northern ridge.",
-            "The cold there is unlike anything in Frostpoint.",
-            "The third shard may be waiting at its peak."
+            "You desire a shard don't you?",
+            "Everyone does, yet none have been able to get one and survive!",
+            "I can tell you where a shard lies,",
+            "but don't blame me if you find yourself dead.",
+            "Before you go,",
+            "You must've seen that the central dojo has been locked",
+            "It's cursed now, all shards must be brought to it",
+            "If you dare find the shards you better fix the dojo.",
+            "Our elder is trapped",
+            "so to the quiet woods we go!",
+            "There you will find a shard...",
+            "if you survive",
+            "HAHAHAHAHAHA"
         ],
-        "question": "Will you climb the northern ridge?",
+        "question": "Will you venture into the woods?",
         "level": "level3"
     },
     "house4": {
         "name": "Crystal Keeper",
         "dialogue": [
-            "The final shard lies beyond the last frozen passage.",
-            "Its power has drawn the strongest creatures toward it.",
-            "Recover it, and Frostpoint may finally be saved."
+            "Our poor elder, oh how I weep for him.",
+            "I know your kind, child.",
+            "You want a shard don't you?",
+            "sniffle",
+            "I can lead you to the shard in the abandoned dungeon.",
+            "but you won't like what you find there.",
+            "please stay safe,",
+            "I can not let another child perish in that place.",
+            "But promise me, if you get the shard please help our elder."
         ],
-        "question": "Will you seek the final crystal shard?",
+        "question": "Will you help me free him?",
         "level": "level4"
     }
 }
